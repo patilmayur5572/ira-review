@@ -1,0 +1,62 @@
+{
+  "name": "ira-review",
+  "version": "0.1.0",
+  "description": "AI-powered PR review tool with SonarQube integration",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ira-review": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sonarqube",
+    "sonarcloud",
+    "code-review",
+    "ai",
+    "pull-request",
+    "bitbucket",
+    "static-analysis"
+  ],
+  "author": "Mayur Patil (https://github.com/patilmayur5572)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patilmayur5572/ira-review.git"
+  },
+  "homepage": "https://github.com/patilmayur5572/ira-review#readme",
+  "bugs": {
+    "url": "https://github.com/patilmayur5572/ira-review/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "openai": "^4.67.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.2.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.0.18"
+  }
+}
