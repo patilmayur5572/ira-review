@@ -21,8 +21,9 @@ export function resolveConfigFromEnv(
     );
   }
 
-  // JIRA config is fully optional
+  // JIRA and notifications config is fully optional
   const jiraConfig = resolveJiraConfig(overrides);
+  const notificationsConfig = resolveNotificationsConfig(overrides);
 
   const [workspace = "", repoSlug = ""] = (repo ?? "").split("/");
   if (!dryRun && (!workspace || !repoSlug)) {
@@ -51,6 +52,21 @@ export function resolveConfigFromEnv(
     ...(overrides.minSeverity && { minSeverity: overrides.minSeverity as IraConfig["minSeverity"] }),
     ...(jiraConfig && { jira: jiraConfig }),
     ...(overrides.jiraTicket && { jiraTicket: overrides.jiraTicket }),
+    ...(notificationsConfig && { notifications: notificationsConfig }),
+  };
+}
+
+function resolveNotificationsConfig(
+  overrides: Partial<FlatConfig>,
+): IraConfig["notifications"] | undefined {
+  const slackUrl = overrides.slackWebhook ?? optionalEnv("IRA_SLACK_WEBHOOK");
+  const teamsUrl = overrides.teamsWebhook ?? optionalEnv("IRA_TEAMS_WEBHOOK");
+
+  if (!slackUrl && !teamsUrl) return undefined;
+
+  return {
+    ...(slackUrl && { slackWebhookUrl: slackUrl }),
+    ...(teamsUrl && { teamsWebhookUrl: teamsUrl }),
   };
 }
 
@@ -91,6 +107,8 @@ export interface FlatConfig {
   jiraToken?: string;
   jiraTicket?: string;
   jiraAcField?: string;
+  slackWebhook?: string;
+  teamsWebhook?: string;
 }
 
 function env(key: string): string {
