@@ -1,5 +1,7 @@
 # ira-review
 
+**AI-powered PR reviews with built-in JIRA intelligence.**
+
 Your PRs get flagged by SonarQube. Then someone has to go read each issue, figure out what it means, and decide how to fix it. That takes time.
 
 **ira-review** does that for you. It pulls your SonarQube issues, runs them through AI, and posts clear, actionable comments right on your pull request. Explanation, impact, suggested fix. Done.

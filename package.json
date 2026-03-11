@@ -1,7 +1,7 @@
 {
   "name": "ira-review",
   "version": "0.1.0",
-  "description": "AI-powered PR review tool with SonarQube integration",
+  "description": "AI-powered PR reviews with built-in JIRA intelligence",
   "type": "module",
   "exports": {
     ".": {
@@ -34,7 +34,13 @@
     "ai",
     "pull-request",
     "bitbucket",
-    "static-analysis"
+    "static-analysis",
+    "jira",
+    "pr-review",
+    "risk-scoring",
+    "code-complexity",
+    "acceptance-criteria",
+    "openai"
   ],
   "author": "Mayur Patil (https://github.com/patilmayur5572)",
   "license": "MIT",
