@@ -22,7 +22,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run typecheck
+      - run: npx tsc --noEmit --skipLibCheck
 
       - run: npm test
 
