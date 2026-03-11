@@ -33,6 +33,7 @@ export interface ReviewResult {
   risk: RiskReport | null;
   complexity: ComplexityReport | null;
   acceptanceValidation: AcceptanceValidationResult | null;
+  warnings?: string[];
 }
 
 export interface AIProvider {

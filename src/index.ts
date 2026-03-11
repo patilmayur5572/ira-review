@@ -20,7 +20,7 @@ export { JiraClient } from "./integrations/jiraClient.js";
 export { detectFramework } from "./frameworks/detector.js";
 
 // Utilities
-export { withRetry } from "./utils/retry.js";
+export { withRetry, fetchWithTimeout, RetryableError, TimeoutError, isRetryable } from "./utils/retry.js";
 export { mapWithConcurrency } from "./utils/concurrency.js";
 export { resolveConfigFromEnv } from "./utils/env.js";
 

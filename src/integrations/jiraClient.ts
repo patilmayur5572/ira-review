@@ -1,6 +1,6 @@
 import type { JiraConfig } from "../types/config.js";
 import type { JiraIssue } from "../types/jira.js";
-import { withRetry } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 export class JiraClient {
   private readonly baseUrl: string;
@@ -23,11 +23,14 @@ export class JiraClient {
       const fields = `summary,description,status,issuetype,labels,${this.acceptanceCriteriaField}`;
       const url = `${this.baseUrl}/rest/api/3/issue/${issueKey}?fields=${fields}`;
 
-      const response = await fetch(url, { headers: this.headers });
+      const response = await fetchWithTimeout(url, { headers: this.headers });
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`JIRA API error (${response.status}): ${body}`);
+        throw new RetryableError(
+          `JIRA API error (${response.status}): ${body}`,
+          response.status,
+        );
       }
 
       const data = (await response.json()) as Record<string, unknown>;
