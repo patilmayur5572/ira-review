@@ -30,6 +30,7 @@ export interface IraConfig {
   ai: AIConfig;
   pullRequestId: string;
   dryRun?: boolean;
+  minSeverity?: "BLOCKER" | "CRITICAL" | "MAJOR" | "MINOR" | "INFO";
   jira?: JiraConfig;
   jiraTicket?: string;
 }

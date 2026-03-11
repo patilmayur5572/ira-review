@@ -22,6 +22,7 @@ program
   .option("--ai-model <model>", "AI model to use", "gpt-4o-mini")
   .option("--bitbucket-url <url>", "Bitbucket base URL (or IRA_BITBUCKET_URL)")
   .option("--dry-run", "Print comments to stdout instead of posting to SCM")
+  .option("--min-severity <level>", "Minimum severity to review (BLOCKER|CRITICAL|MAJOR|MINOR|INFO)", "CRITICAL")
   .option("--jira-url <url>", "JIRA base URL (or IRA_JIRA_URL)")
   .option("--jira-email <email>", "JIRA email (or IRA_JIRA_EMAIL)")
   .option("--jira-token <token>", "JIRA API token (or IRA_JIRA_TOKEN)")
@@ -40,6 +41,7 @@ program
         aiModel: opts.aiModel,
         bitbucketUrl: opts.bitbucketUrl,
         dryRun: opts.dryRun,
+        minSeverity: opts.minSeverity,
         jiraUrl: opts.jiraUrl,
         jiraEmail: opts.jiraEmail,
         jiraToken: opts.jiraToken,
