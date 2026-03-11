@@ -10,6 +10,7 @@ import { buildPrompt } from "../ai/promptBuilder.js";
 import { createAIProvider } from "../ai/aiClient.js";
 import { BitbucketClient } from "../scm/bitbucket.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
+import { CommentTracker, deduplicateKey } from "../scm/commentTracker.js";
 import { calculateRisk } from "./riskScorer.js";
 import { ComplexityAnalyzer } from "./complexityAnalyzer.js";
 import { JiraClient } from "../integrations/jiraClient.js";
@@ -124,7 +125,17 @@ export class ReviewEngine {
       }
     }
 
-    // 9. Post comments / print results
+    // 9. Deduplicate: skip issues already commented on
+    let newComments = comments;
+    if (!this.config.dryRun) {
+      const tracker = new CommentTracker(scm);
+      const existing = await tracker.getExistingIraComments(pullRequestId);
+      newComments = comments.filter(
+        (c) => !existing.has(deduplicateKey(c.filePath, c.line)),
+      );
+    }
+
+    // 10. Post comments / print results
     if (this.config.dryRun) {
       this.printRiskReport(risk);
       if (complexity) this.printComplexityReport(complexity);
@@ -140,7 +151,7 @@ export class ReviewEngine {
       }
     } else {
       const bitbucket = new BitbucketClient(scm);
-      for (const comment of comments) {
+      for (const comment of newComments) {
         try {
           await bitbucket.postComment(comment, pullRequestId);
         } catch (error) {
