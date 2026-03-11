@@ -1,4 +1,6 @@
 import type { SonarIssue } from "./sonar.js";
+import type { RiskReport, ComplexityReport } from "./risk.js";
+import type { AcceptanceValidationResult } from "./jira.js";
 
 export type Framework = "react" | "angular" | "vue" | "nestjs" | "node";
 
@@ -28,6 +30,9 @@ export interface ReviewResult {
   totalIssues: number;
   reviewedIssues: number;
   comments: ReviewComment[];
+  risk: RiskReport | null;
+  complexity: ComplexityReport | null;
+  acceptanceValidation: AcceptanceValidationResult | null;
 }
 
 export interface AIProvider {

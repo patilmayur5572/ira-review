@@ -17,10 +17,19 @@ export interface AIConfig {
   model?: string;
 }
 
+export interface JiraConfig {
+  baseUrl: string;
+  email: string;
+  token: string;
+  acceptanceCriteriaField?: string;
+}
+
 export interface IraConfig {
   sonar: SonarConfig;
   scm: BitbucketConfig;
   ai: AIConfig;
   pullRequestId: string;
   dryRun?: boolean;
+  jira?: JiraConfig;
+  jiraTicket?: string;
 }

@@ -21,6 +21,9 @@ export function resolveConfigFromEnv(
     );
   }
 
+  // JIRA config is fully optional
+  const jiraConfig = resolveJiraConfig(overrides);
+
   const [workspace = "", repoSlug = ""] = (repo ?? "").split("/");
   if (!dryRun && (!workspace || !repoSlug)) {
     throw new Error("repo must be in workspace/repo-slug format");
@@ -45,6 +48,27 @@ export function resolveConfigFromEnv(
     },
     pullRequestId: pr,
     dryRun,
+    ...(jiraConfig && { jira: jiraConfig }),
+    ...(overrides.jiraTicket && { jiraTicket: overrides.jiraTicket }),
+  };
+}
+
+function resolveJiraConfig(
+  overrides: Partial<FlatConfig>,
+): IraConfig["jira"] | undefined {
+  const baseUrl = overrides.jiraUrl ?? optionalEnv("IRA_JIRA_URL");
+  const email = overrides.jiraEmail ?? optionalEnv("IRA_JIRA_EMAIL");
+  const token = overrides.jiraToken ?? optionalEnv("IRA_JIRA_TOKEN");
+
+  if (!baseUrl || !email || !token) return undefined;
+
+  return {
+    baseUrl,
+    email,
+    token,
+    ...(overrides.jiraAcField && {
+      acceptanceCriteriaField: overrides.jiraAcField,
+    }),
   };
 }
 
@@ -60,6 +84,11 @@ export interface FlatConfig {
   aiModel?: string;
   aiApiKey?: string;
   dryRun?: boolean;
+  jiraUrl?: string;
+  jiraEmail?: string;
+  jiraToken?: string;
+  jiraTicket?: string;
+  jiraAcField?: string;
 }
 
 function env(key: string): string {

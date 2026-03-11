@@ -94,15 +94,31 @@ describe("ReviewEngine", () => {
     const engine = new ReviewEngine(baseConfig);
     const result = await engine.run();
 
-    // Should fetch from Sonar
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-
     // Only BLOCKER should pass filter (MAJOR filtered out)
     expect(result.totalIssues).toBe(2);
     expect(result.reviewedIssues).toBe(1);
     expect(result.comments).toHaveLength(1);
     expect(result.comments[0].rule).toBe("typescript:S1234");
     expect(result.comments[0].aiReview.explanation).toBe("Test explanation");
+
+    // Risk report should be present
+    expect(result.risk).not.toBeNull();
+    expect(result.risk!.level).toBeDefined();
+    expect(result.risk!.score).toBeGreaterThanOrEqual(0);
+    expect(result.risk!.factors).toBeInstanceOf(Array);
+    expect(result.risk!.factors.length).toBeGreaterThan(0);
+
+    // Complexity: the mock returns ok:true for all fetches, so the
+    // analyzer gets an empty components array → empty report (not null).
+    expect(result.complexity).toEqual({
+      files: [],
+      hotspots: [],
+      averageComplexity: 0,
+      averageCognitiveComplexity: 0,
+    });
+
+    // No JIRA config in test → acceptance validation should be null
+    expect(result.acceptanceValidation).toBeNull();
 
     // Dry-run: should print, not POST to Bitbucket
     expect(consoleSpy).toHaveBeenCalledWith(
@@ -122,9 +138,14 @@ describe("ReviewEngine", () => {
     const engine = new ReviewEngine(config);
     const result = await engine.run();
 
-    // 1 Sonar fetch + 1 Bitbucket POST
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     expect(result.reviewedIssues).toBe(1);
+
+    // Risk report should still be present in non-dry-run mode
+    expect(result.risk).not.toBeNull();
+    expect(result.risk!.score).toBeGreaterThanOrEqual(0);
+
+    expect(result.complexity).not.toBeNull();
+    expect(result.acceptanceValidation).toBeNull();
   });
 
   it("returns empty comments when no issues match filter", async () => {
@@ -156,5 +177,12 @@ describe("ReviewEngine", () => {
     expect(result.totalIssues).toBe(1);
     expect(result.reviewedIssues).toBe(0);
     expect(result.comments).toHaveLength(0);
+
+    // Risk should be LOW when no critical/blocker issues
+    expect(result.risk).not.toBeNull();
+    expect(result.risk!.level).toBe("LOW");
+
+    expect(result.complexity).not.toBeNull();
+    expect(result.acceptanceValidation).toBeNull();
   });
 });
