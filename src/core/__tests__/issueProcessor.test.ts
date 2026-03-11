@@ -45,6 +45,40 @@ describe("filterIssues", () => {
   it("handles empty input", () => {
     expect(filterIssues([])).toHaveLength(0);
   });
+
+  it("filters by custom minSeverity=MAJOR", () => {
+    const issues = [
+      makeIssue({ severity: "BLOCKER" }),
+      makeIssue({ severity: "CRITICAL" }),
+      makeIssue({ severity: "MAJOR" }),
+      makeIssue({ severity: "MINOR" }),
+      makeIssue({ severity: "INFO" }),
+    ];
+
+    const result = filterIssues(issues, "MAJOR");
+    expect(result).toHaveLength(3);
+  });
+
+  it("filters by custom minSeverity=BLOCKER", () => {
+    const issues = [
+      makeIssue({ severity: "BLOCKER" }),
+      makeIssue({ severity: "CRITICAL" }),
+    ];
+
+    const result = filterIssues(issues, "BLOCKER");
+    expect(result).toHaveLength(1);
+    expect(result[0].severity).toBe("BLOCKER");
+  });
+
+  it("includes all issues with minSeverity=INFO", () => {
+    const issues = [
+      makeIssue({ severity: "BLOCKER" }),
+      makeIssue({ severity: "INFO" }),
+    ];
+
+    const result = filterIssues(issues, "INFO");
+    expect(result).toHaveLength(2);
+  });
 });
 
 describe("groupIssuesByFile", () => {
