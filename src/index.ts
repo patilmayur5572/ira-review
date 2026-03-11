@@ -12,6 +12,7 @@ export { buildPrompt } from "./ai/promptBuilder.js";
 
 // SCM
 export { BitbucketClient } from "./scm/bitbucket.js";
+export { CommentTracker, deduplicateKey } from "./scm/commentTracker.js";
 
 // Integrations
 export { JiraClient } from "./integrations/jiraClient.js";
