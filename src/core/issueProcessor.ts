@@ -1,11 +1,16 @@
 import type { Severity, SonarIssue } from "../types/sonar.js";
 import type { GroupedIssues } from "../types/review.js";
 
-const RELEVANT_SEVERITIES: Severity[] = ["BLOCKER", "CRITICAL"];
+const SEVERITY_ORDER: Severity[] = ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"];
+const DEFAULT_MIN_SEVERITY: Severity = "CRITICAL";
 
-export function filterIssues(issues: SonarIssue[]): SonarIssue[] {
-  return issues.filter((issue) =>
-    RELEVANT_SEVERITIES.includes(issue.severity),
+export function filterIssues(
+  issues: SonarIssue[],
+  minSeverity: Severity = DEFAULT_MIN_SEVERITY,
+): SonarIssue[] {
+  const threshold = SEVERITY_ORDER.indexOf(minSeverity);
+  return issues.filter(
+    (issue) => SEVERITY_ORDER.indexOf(issue.severity) <= threshold,
   );
 }
 
@@ -26,7 +31,6 @@ export function groupIssuesByFile(issues: SonarIssue[]): GroupedIssues[] {
 }
 
 function extractFilePath(component: string): string {
-  // Sonar component keys are formatted as "project:src/file.ts"
   const colonIndex = component.indexOf(":");
   return colonIndex >= 0 ? component.slice(colonIndex + 1) : component;
 }
