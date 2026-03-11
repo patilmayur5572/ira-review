@@ -15,6 +15,7 @@ import { calculateRisk } from "./riskScorer.js";
 import { ComplexityAnalyzer } from "./complexityAnalyzer.js";
 import { JiraClient } from "../integrations/jiraClient.js";
 import { validateAcceptanceCriteria } from "./acceptanceValidator.js";
+import { Notifier } from "../integrations/notifier.js";
 
 const AI_CONCURRENCY = 3;
 
@@ -114,7 +115,7 @@ export class ReviewEngine {
       }
     }
 
-    return {
+    const result: ReviewResult = {
       pullRequestId,
       framework,
       totalIssues: allIssues.length,
@@ -124,6 +125,14 @@ export class ReviewEngine {
       complexity,
       acceptanceValidation,
     };
+
+    // 10. Send notifications
+    if (this.config.notifications) {
+      const notifier = new Notifier(this.config.notifications);
+      await notifier.notify(result);
+    }
+
+    return result;
   }
 
   private printComment(comment: ReviewComment): void {
