@@ -41,4 +41,5 @@ export interface AIProvider {
 
 export interface SCMProvider {
   postComment(comment: ReviewComment, pullRequestId: string): Promise<void>;
+  postSummary(summary: string, pullRequestId: string): Promise<void>;
 }

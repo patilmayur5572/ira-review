@@ -5,6 +5,7 @@ export { filterIssues, groupIssuesByFile } from "./core/issueProcessor.js";
 export { calculateRisk } from "./core/riskScorer.js";
 export { ComplexityAnalyzer } from "./core/complexityAnalyzer.js";
 export { validateAcceptanceCriteria } from "./core/acceptanceValidator.js";
+export { buildSummary } from "./core/summaryBuilder.js";
 
 // AI
 export { createAIProvider } from "./ai/aiClient.js";

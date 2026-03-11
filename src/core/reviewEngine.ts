@@ -15,6 +15,7 @@ import { calculateRisk } from "./riskScorer.js";
 import { ComplexityAnalyzer } from "./complexityAnalyzer.js";
 import { JiraClient } from "../integrations/jiraClient.js";
 import { validateAcceptanceCriteria } from "./acceptanceValidator.js";
+import { buildSummary } from "./summaryBuilder.js";
 
 const AI_CONCURRENCY = 3;
 
@@ -99,22 +100,7 @@ export class ReviewEngine {
       );
     }
 
-    // 9. Post comments / print results
-    if (this.config.dryRun) {
-      this.printRiskReport(risk);
-      if (complexity) this.printComplexityReport(complexity);
-      if (acceptanceValidation) this.printAcceptanceReport(acceptanceValidation);
-      for (const comment of comments) {
-        this.printComment(comment);
-      }
-    } else {
-      const bitbucket = new BitbucketClient(scm);
-      for (const comment of comments) {
-        await bitbucket.postComment(comment, pullRequestId);
-      }
-    }
-
-    return {
+    const result: ReviewResult = {
       pullRequestId,
       framework,
       totalIssues: allIssues.length,
@@ -124,6 +110,24 @@ export class ReviewEngine {
       complexity,
       acceptanceValidation,
     };
+
+    // 9. Post comments / print results
+    const summary = buildSummary(result);
+
+    if (this.config.dryRun) {
+      console.log(summary);
+      for (const comment of comments) {
+        this.printComment(comment);
+      }
+    } else {
+      const bitbucket = new BitbucketClient(scm);
+      await bitbucket.postSummary(summary, pullRequestId);
+      for (const comment of comments) {
+        await bitbucket.postComment(comment, pullRequestId);
+      }
+    }
+
+    return result;
   }
 
   private printComment(comment: ReviewComment): void {
