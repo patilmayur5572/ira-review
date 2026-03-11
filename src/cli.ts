@@ -7,7 +7,7 @@ const program = new Command();
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube integration")
-  .version("0.1.0");
+  .version("0.1.1");
 
 program
   .command("review")
@@ -22,6 +22,7 @@ program
   .option("--ai-model <model>", "AI model to use", "gpt-4o-mini")
   .option("--bitbucket-url <url>", "Bitbucket base URL (or IRA_BITBUCKET_URL)")
   .option("--dry-run", "Print comments to stdout instead of posting to SCM")
+  .option("--min-severity <level>", "Minimum severity to review (BLOCKER|CRITICAL|MAJOR|MINOR|INFO)", "CRITICAL")
   .option("--jira-url <url>", "JIRA base URL (or IRA_JIRA_URL)")
   .option("--jira-email <email>", "JIRA email (or IRA_JIRA_EMAIL)")
   .option("--jira-token <token>", "JIRA API token (or IRA_JIRA_TOKEN)")
@@ -40,6 +41,7 @@ program
         aiModel: opts.aiModel,
         bitbucketUrl: opts.bitbucketUrl,
         dryRun: opts.dryRun,
+        minSeverity: opts.minSeverity,
         jiraUrl: opts.jiraUrl,
         jiraEmail: opts.jiraEmail,
         jiraToken: opts.jiraToken,
@@ -66,6 +68,12 @@ program
       }
       if (result.acceptanceValidation) {
         console.log(`   JIRA AC Validation:    ${result.acceptanceValidation.overallPass ? "PASS" : "FAIL"}`);
+      }
+      if (result.warnings && result.warnings.length > 0) {
+        console.log(`\n⚠️  Warnings:`);
+        for (const w of result.warnings) {
+          console.log(`   - ${w}`);
+        }
       }
       console.log();
     } catch (error) {

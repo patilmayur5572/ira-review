@@ -48,6 +48,7 @@ export function resolveConfigFromEnv(
     },
     pullRequestId: pr,
     dryRun,
+    ...(overrides.minSeverity && { minSeverity: overrides.minSeverity as IraConfig["minSeverity"] }),
     ...(jiraConfig && { jira: jiraConfig }),
     ...(overrides.jiraTicket && { jiraTicket: overrides.jiraTicket }),
   };
@@ -84,6 +85,7 @@ export interface FlatConfig {
   aiModel?: string;
   aiApiKey?: string;
   dryRun?: boolean;
+  minSeverity?: string;
   jiraUrl?: string;
   jiraEmail?: string;
   jiraToken?: string;
