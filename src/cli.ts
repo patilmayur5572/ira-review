@@ -28,6 +28,8 @@ program
   .option("--jira-token <token>", "JIRA API token (or IRA_JIRA_TOKEN)")
   .option("--jira-ticket <key>", "JIRA ticket key (e.g. PROJ-123)")
   .option("--jira-ac-field <field>", "Custom field ID for acceptance criteria")
+  .option("--slack-webhook <url>", "Slack webhook URL for notifications")
+  .option("--teams-webhook <url>", "Teams webhook URL for notifications")
   .action(async (opts) => {
     try {
       const config = resolveConfigFromEnv({
@@ -47,6 +49,8 @@ program
         jiraToken: opts.jiraToken,
         jiraTicket: opts.jiraTicket,
         jiraAcField: opts.jiraAcField,
+        slackWebhook: opts.slackWebhook,
+        teamsWebhook: opts.teamsWebhook,
       });
 
       console.log(`\n🔍 IRA — AI-Powered PR Review\n`);
