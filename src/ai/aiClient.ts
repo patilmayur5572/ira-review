@@ -27,16 +27,46 @@ class OpenAIProvider implements AIProvider {
           throw new Error("Empty response from OpenAI");
         }
 
-        const parsed = JSON.parse(content) as AIReviewComment;
-        return {
-          explanation: parsed.explanation ?? "No explanation provided.",
-          impact: parsed.impact ?? "No impact assessment provided.",
-          suggestedFix: parsed.suggestedFix ?? "No fix suggested.",
-        };
+        return parseAIResponse(content);
       },
       { maxAttempts: 3, baseDelayMs: 2000 },
     );
   }
+}
+
+function parseAIResponse(content: string): AIReviewComment {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return {
+      explanation: content,
+      impact: "Could not parse structured response.",
+      suggestedFix: "Review the issue manually.",
+    };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      explanation: content,
+      impact: "Could not parse structured response.",
+      suggestedFix: "Review the issue manually.",
+    };
+  }
+
+  const obj = parsed as Record<string, unknown>;
+
+  return {
+    explanation: typeof obj.explanation === "string" && obj.explanation
+      ? obj.explanation
+      : "No explanation provided.",
+    impact: typeof obj.impact === "string" && obj.impact
+      ? obj.impact
+      : "No impact assessment provided.",
+    suggestedFix: typeof obj.suggestedFix === "string" && obj.suggestedFix
+      ? obj.suggestedFix
+      : "No fix suggested.",
+  };
 }
 
 export function createAIProvider(config: AIConfig): AIProvider {

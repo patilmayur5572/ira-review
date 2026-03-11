@@ -1,7 +1,6 @@
 import type { IraConfig } from "../types/config.js";
 import type { ReviewComment, ReviewResult } from "../types/review.js";
 import type { SonarIssue } from "../types/sonar.js";
-import type { RiskReport } from "../types/risk.js";
 import type { ComplexityReport } from "../types/risk.js";
 import type { AcceptanceValidationResult } from "../types/jira.js";
 import { SonarClient } from "./sonarClient.js";
@@ -32,8 +31,10 @@ export class ReviewEngine {
 
   async run(): Promise<ReviewResult> {
     const { sonar, ai, scm, pullRequestId } = this.config;
+    const warnings: string[] = [];
+    const repoPath = this.config.repoPath ?? process.cwd();
 
-    // 1. Fetch issues
+    // 1. Fetch issues (hard fail)
     const sonarClient = new SonarClient(sonar);
     const allIssues = await sonarClient.fetchPullRequestIssues(pullRequestId);
 
@@ -41,16 +42,23 @@ export class ReviewEngine {
     const filtered = filterIssues(allIssues, this.config.minSeverity);
     const grouped = groupIssuesByFile(filtered);
 
-    // 3. Detect framework
-    const framework = await detectFramework(process.cwd());
+    // 3. Detect framework (soft fail)
+    let framework: Awaited<ReturnType<typeof detectFramework>> = null;
+    try {
+      framework = await detectFramework(repoPath);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      warnings.push(`Framework detection failed: ${msg}`);
+    }
 
-    // 4. Code complexity analysis
+    // 4. Code complexity analysis (soft fail)
     let complexity: ComplexityReport | null = null;
     try {
       const analyzer = new ComplexityAnalyzer(sonar);
       complexity = await analyzer.analyze(pullRequestId);
-    } catch {
-      // Complexity data is optional, continue without it
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      warnings.push(`Complexity analysis failed: ${msg}`);
     }
 
     // 5. Flatten for concurrent processing
@@ -60,22 +68,34 @@ export class ReviewEngine {
 
     // 6. Generate AI reviews with concurrency limit
     const aiProvider = createAIProvider(ai);
-    const comments = await mapWithConcurrency(
+    const comments: ReviewComment[] = [];
+
+    const results = await mapWithConcurrency(
       flatIssues,
       AI_CONCURRENCY,
-      async ({ filePath, issue }): Promise<ReviewComment> => {
-        const prompt = buildPrompt(issue, framework);
-        const aiReview = await aiProvider.review(prompt);
-        return {
-          filePath,
-          line: issue.textRange?.startLine ?? issue.line ?? 0,
-          rule: issue.rule,
-          severity: issue.severity,
-          message: issue.message,
-          aiReview,
-        };
+      async ({ filePath, issue }): Promise<ReviewComment | null> => {
+        try {
+          const prompt = buildPrompt(issue, framework);
+          const aiReview = await aiProvider.review(prompt);
+          return {
+            filePath,
+            line: issue.textRange?.startLine ?? issue.line ?? 0,
+            rule: issue.rule,
+            severity: issue.severity,
+            message: issue.message,
+            aiReview,
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          warnings.push(`AI review failed for ${issue.key}: ${msg}`);
+          return null;
+        }
       },
     );
+
+    for (const r of results) {
+      if (r) comments.push(r);
+    }
 
     // 7. Calculate PR risk score
     const filesChanged = new Set(allIssues.map((i) => i.component)).size;
@@ -86,17 +106,22 @@ export class ReviewEngine {
       filesChanged,
     });
 
-    // 8. JIRA acceptance criteria validation
+    // 8. JIRA acceptance criteria validation (soft fail)
     let acceptanceValidation: AcceptanceValidationResult | null = null;
     if (this.config.jira && this.config.jiraTicket) {
-      const jiraClient = new JiraClient(this.config.jira);
-      const jiraIssue = await jiraClient.fetchIssue(this.config.jiraTicket);
-      acceptanceValidation = await validateAcceptanceCriteria(
-        jiraIssue,
-        allIssues,
-        framework,
-        aiProvider,
-      );
+      try {
+        const jiraClient = new JiraClient(this.config.jira);
+        const jiraIssue = await jiraClient.fetchIssue(this.config.jiraTicket);
+        acceptanceValidation = await validateAcceptanceCriteria(
+          jiraIssue,
+          allIssues,
+          framework,
+          aiProvider,
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        warnings.push(`JIRA validation failed: ${msg}`);
+      }
     }
 
     // 9. Post comments / print results
@@ -107,10 +132,21 @@ export class ReviewEngine {
       for (const comment of comments) {
         this.printComment(comment);
       }
+      if (warnings.length > 0) {
+        console.log(`\n⚠️  Warnings:`);
+        for (const w of warnings) {
+          console.log(`   - ${w}`);
+        }
+      }
     } else {
       const bitbucket = new BitbucketClient(scm);
       for (const comment of comments) {
-        await bitbucket.postComment(comment, pullRequestId);
+        try {
+          await bitbucket.postComment(comment, pullRequestId);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          warnings.push(`Failed to post comment on ${comment.filePath}:${comment.line}: ${msg}`);
+        }
       }
     }
 
@@ -123,6 +159,7 @@ export class ReviewEngine {
       risk,
       complexity,
       acceptanceValidation,
+      warnings,
     };
   }
 
@@ -136,7 +173,7 @@ export class ReviewEngine {
     console.log(`   Fix:      ${comment.aiReview.suggestedFix}`);
   }
 
-  private printRiskReport(risk: RiskReport): void {
+  private printRiskReport(risk: ReturnType<typeof calculateRisk>): void {
     const emoji =
       risk.level === "CRITICAL"
         ? "🔴"
