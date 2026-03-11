@@ -22,6 +22,11 @@ program
   .option("--ai-model <model>", "AI model to use", "gpt-4o-mini")
   .option("--bitbucket-url <url>", "Bitbucket base URL (or IRA_BITBUCKET_URL)")
   .option("--dry-run", "Print comments to stdout instead of posting to SCM")
+  .option("--jira-url <url>", "JIRA base URL (or IRA_JIRA_URL)")
+  .option("--jira-email <email>", "JIRA email (or IRA_JIRA_EMAIL)")
+  .option("--jira-token <token>", "JIRA API token (or IRA_JIRA_TOKEN)")
+  .option("--jira-ticket <key>", "JIRA ticket key (e.g. PROJ-123)")
+  .option("--jira-ac-field <field>", "Custom field ID for acceptance criteria")
   .action(async (opts) => {
     try {
       const config = resolveConfigFromEnv({
@@ -35,6 +40,11 @@ program
         aiModel: opts.aiModel,
         bitbucketUrl: opts.bitbucketUrl,
         dryRun: opts.dryRun,
+        jiraUrl: opts.jiraUrl,
+        jiraEmail: opts.jiraEmail,
+        jiraToken: opts.jiraToken,
+        jiraTicket: opts.jiraTicket,
+        jiraAcField: opts.jiraAcField,
       });
 
       console.log(`\n🔍 IRA — AI-Powered PR Review\n`);
@@ -50,7 +60,14 @@ program
       console.log(`   Total issues found:    ${result.totalIssues}`);
       console.log(`   Issues reviewed (AI):  ${result.reviewedIssues}`);
       console.log(`   Framework detected:    ${result.framework ?? "none"}`);
-      console.log(`   Comments posted:       ${result.comments.length}\n`);
+      console.log(`   Comments posted:       ${result.comments.length}`);
+      if (result.risk) {
+        console.log(`   PR Risk:               ${result.risk.level} (${result.risk.score}/${result.risk.maxScore})`);
+      }
+      if (result.acceptanceValidation) {
+        console.log(`   JIRA AC Validation:    ${result.acceptanceValidation.overallPass ? "PASS" : "FAIL"}`);
+      }
+      console.log();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown error";
