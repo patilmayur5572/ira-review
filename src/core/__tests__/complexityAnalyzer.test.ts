@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { ComplexityAnalyzer } from "../complexityAnalyzer.js";
 
-vi.mock("../../utils/retry.js", () => ({
-  withRetry: <T>(fn: () => Promise<T>) => fn(),
-}));
+vi.mock("../../utils/retry.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/retry.js")>();
+  return {
+    ...actual,
+    withRetry: <T>(fn: () => Promise<T>) => fn(),
+    fetchWithTimeout: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
+  };
+});
 
 const sonarConfig = {
   baseUrl: "https://sonar.example.com",
