@@ -1,5 +1,5 @@
 import type { BitbucketConfig } from "../types/config.js";
-import { withRetry } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 const IRA_MARKER = "🔍 **IRA Review**";
 
@@ -58,11 +58,14 @@ export class CommentTracker {
     url: string,
   ): Promise<BitbucketCommentsResponse> {
     return withRetry(async () => {
-      const response = await fetch(url, { headers: this.headers });
+      const response = await fetchWithTimeout(url, { headers: this.headers });
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Bitbucket API error (${response.status}): ${body}`);
+        throw new RetryableError(
+          `Bitbucket API error (${response.status}): ${body}`,
+          response.status,
+        );
       }
 
       return (await response.json()) as BitbucketCommentsResponse;

@@ -1,6 +1,6 @@
 import type { NotificationConfig } from "../types/config.js";
 import type { ReviewResult } from "../types/review.js";
-import { withRetry } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout } from "../utils/retry.js";
 
 export class Notifier {
   private readonly config: NotificationConfig;
@@ -124,7 +124,7 @@ export class Notifier {
     payload: unknown,
   ): Promise<void> {
     await withRetry(async () => {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
