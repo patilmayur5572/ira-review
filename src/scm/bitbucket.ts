@@ -88,7 +88,7 @@ export class BitbucketClient implements SCMProvider {
     };
 
     await withRetry(async () => {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify(body),
@@ -96,7 +96,10 @@ export class BitbucketClient implements SCMProvider {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Bitbucket API error (${response.status}): ${text}`);
+        throw new RetryableError(
+          `Bitbucket API error (${response.status}): ${text}`,
+          response.status,
+        );
       }
     });
   }
