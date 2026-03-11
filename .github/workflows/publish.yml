@@ -19,7 +19,10 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - run: npm install
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install --no-save @rollup/rollup-linux-x64-gnu
 
       - run: npm run typecheck
 
