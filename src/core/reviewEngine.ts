@@ -195,48 +195,4 @@ export class ReviewEngine {
     console.log(`   Fix:      ${comment.aiReview.suggestedFix}`);
   }
 
-  private printRiskReport(risk: ReturnType<typeof calculateRisk>): void {
-    const emoji =
-      risk.level === "CRITICAL"
-        ? "🔴"
-        : risk.level === "HIGH"
-          ? "🟠"
-          : risk.level === "MEDIUM"
-            ? "🟡"
-            : "🟢";
-
-    console.log(`\n${"═".repeat(60)}`);
-    console.log(`${emoji} PR Risk Score: ${risk.level} (${risk.score}/${risk.maxScore})`);
-    console.log(`${"═".repeat(60)}`);
-    for (const factor of risk.factors) {
-      const bar = factor.score > 0 ? "▓" : "░";
-      console.log(`   ${bar} ${factor.name}: ${factor.score}/${factor.maxScore} - ${factor.detail}`);
-    }
-    console.log(`\n   ${risk.summary}`);
-  }
-
-  private printComplexityReport(report: ComplexityReport): void {
-    console.log(`\n${"─".repeat(60)}`);
-    console.log(`🧠 Code Complexity`);
-    console.log(`   Avg complexity:           ${report.averageComplexity.toFixed(1)}`);
-    console.log(`   Avg cognitive complexity: ${report.averageCognitiveComplexity.toFixed(1)}`);
-    console.log(`   Files analyzed:           ${report.files.length}`);
-    if (report.hotspots.length > 0) {
-      console.log(`   ⚠️  Hotspots (complexity > 15):`);
-      for (const h of report.hotspots.slice(0, 5)) {
-        console.log(`      ${h.filePath} (complexity: ${h.complexity}, cognitive: ${h.cognitiveComplexity})`);
-      }
-    }
-  }
-
-  private printAcceptanceReport(result: AcceptanceValidationResult): void {
-    const emoji = result.overallPass ? "✅" : "❌";
-    console.log(`\n${"─".repeat(60)}`);
-    console.log(`${emoji} JIRA Acceptance: ${result.jiraKey} - ${result.summary}`);
-    for (const c of result.criteria) {
-      const icon = c.met ? "✅" : "❌";
-      console.log(`   ${icon} ${c.description}`);
-      console.log(`      ${c.evidence}`);
-    }
-  }
 }
