@@ -30,6 +30,7 @@ export interface IraConfig {
   ai: AIConfig;
   pullRequestId: string;
   dryRun?: boolean;
+  repoPath?: string;
   jira?: JiraConfig;
   jiraTicket?: string;
 }
