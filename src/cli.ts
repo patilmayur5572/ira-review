@@ -7,7 +7,7 @@ const program = new Command();
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube integration")
-  .version("0.1.0");
+  .version("0.1.1");
 
 program
   .command("review")
@@ -66,6 +66,12 @@ program
       }
       if (result.acceptanceValidation) {
         console.log(`   JIRA AC Validation:    ${result.acceptanceValidation.overallPass ? "PASS" : "FAIL"}`);
+      }
+      if (result.warnings && result.warnings.length > 0) {
+        console.log(`\n⚠️  Warnings:`);
+        for (const w of result.warnings) {
+          console.log(`   - ${w}`);
+        }
       }
       console.log();
     } catch (error) {

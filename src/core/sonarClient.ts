@@ -1,6 +1,6 @@
 import type { SonarConfig } from "../types/config.js";
 import type { SonarIssue, SonarSearchResponse } from "../types/sonar.js";
-import { withRetry } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 export class SonarClient {
   private readonly baseUrl: string;
@@ -47,11 +47,14 @@ export class SonarClient {
   ): Promise<SonarSearchResponse> {
     return withRetry(async () => {
       const url = `${this.baseUrl}/api/issues/search?${params}`;
-      const response = await fetch(url, { headers: this.headers });
+      const response = await fetchWithTimeout(url, { headers: this.headers });
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Sonar API error (${response.status}): ${body}`);
+        throw new RetryableError(
+          `Sonar API error (${response.status}): ${body}`,
+          response.status,
+        );
       }
 
       return (await response.json()) as SonarSearchResponse;
