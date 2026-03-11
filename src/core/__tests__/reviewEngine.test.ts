@@ -129,9 +129,21 @@ describe("ReviewEngine", () => {
   });
 
   it("posts to Bitbucket when not in dry-run mode", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(sonarResponse),
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      // First 2 calls: Sonar issues + complexity. Rest: comment tracker + Bitbucket POST
+      if (callCount <= 2) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(callCount === 1 ? sonarResponse : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } }),
+        });
+      }
+      // Comment tracker returns empty
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ values: [] }),
+      });
     });
 
     const config: IraConfig = { ...baseConfig, dryRun: false };
