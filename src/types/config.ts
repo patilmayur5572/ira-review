@@ -32,4 +32,10 @@ export interface IraConfig {
   dryRun?: boolean;
   jira?: JiraConfig;
   jiraTicket?: string;
+  notifications?: NotificationConfig;
+}
+
+export interface NotificationConfig {
+  slackWebhookUrl?: string;
+  teamsWebhookUrl?: string;
 }
