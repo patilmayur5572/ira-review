@@ -31,6 +31,7 @@ export interface IraConfig {
   pullRequestId: string;
   dryRun?: boolean;
   repoPath?: string;
+  minSeverity?: "BLOCKER" | "CRITICAL" | "MAJOR" | "MINOR" | "INFO";
   jira?: JiraConfig;
   jiraTicket?: string;
 }

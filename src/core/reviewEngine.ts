@@ -38,8 +38,8 @@ export class ReviewEngine {
     const sonarClient = new SonarClient(sonar);
     const allIssues = await sonarClient.fetchPullRequestIssues(pullRequestId);
 
-    // 2. Filter to BLOCKER & CRITICAL
-    const filtered = filterIssues(allIssues);
+    // 2. Filter by severity
+    const filtered = filterIssues(allIssues, this.config.minSeverity);
     const grouped = groupIssuesByFile(filtered);
 
     // 3. Detect framework (soft fail)
