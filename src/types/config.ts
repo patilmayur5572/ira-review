@@ -30,6 +30,14 @@ export interface IraConfig {
   ai: AIConfig;
   pullRequestId: string;
   dryRun?: boolean;
+  repoPath?: string;
+  minSeverity?: "BLOCKER" | "CRITICAL" | "MAJOR" | "MINOR" | "INFO";
   jira?: JiraConfig;
   jiraTicket?: string;
+  notifications?: NotificationConfig;
+}
+
+export interface NotificationConfig {
+  slackWebhookUrl?: string;
+  teamsWebhookUrl?: string;
 }

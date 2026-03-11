@@ -83,11 +83,29 @@ Respond with ONLY the JSON object.`;
 function parseValidationResponse(
   explanation: string,
 ): Array<{ description: string; met: boolean; evidence: string }> {
+  // Try structured JSON array first
+  try {
+    const parsed = JSON.parse(explanation);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item): item is Record<string, unknown> => item && typeof item === "object")
+        .map((item) => ({
+          description: typeof item.description === "string" ? item.description : "Unknown criterion",
+          met: item.met === true,
+          evidence: typeof item.evidence === "string" ? item.evidence : "No evidence provided",
+        }));
+    }
+  } catch {
+    // Fall through to pipe-delimited parsing
+  }
+
+  // Fallback: pipe-delimited format
   const lines = explanation.split("|").map((l) => l.trim());
   return lines
     .filter((line) => line.length > 0)
     .map((line) => {
-      const met = line.toUpperCase().includes("MET") && !line.toUpperCase().includes("NOT_MET");
+      const upper = line.toUpperCase();
+      const met = upper.includes("MET") && !upper.includes("NOT_MET") && !upper.includes("NOT MET");
       const parts = line.split("-").map((p) => p.trim());
       return {
         description: parts[0] ?? line,

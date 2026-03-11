@@ -13,20 +13,22 @@ export { buildPrompt } from "./ai/promptBuilder.js";
 
 // SCM
 export { BitbucketClient } from "./scm/bitbucket.js";
+export { CommentTracker, deduplicateKey } from "./scm/commentTracker.js";
 
 // Integrations
 export { JiraClient } from "./integrations/jiraClient.js";
+export { Notifier } from "./integrations/notifier.js";
 
 // Framework detection
 export { detectFramework } from "./frameworks/detector.js";
 
 // Utilities
-export { withRetry } from "./utils/retry.js";
+export { withRetry, fetchWithTimeout, RetryableError, TimeoutError, isRetryable } from "./utils/retry.js";
 export { mapWithConcurrency } from "./utils/concurrency.js";
 export { resolveConfigFromEnv } from "./utils/env.js";
 
 // Types
-export type { IraConfig, SonarConfig, BitbucketConfig, AIConfig, JiraConfig } from "./types/config.js";
+export type { IraConfig, SonarConfig, BitbucketConfig, AIConfig, JiraConfig, NotificationConfig } from "./types/config.js";
 export type { SonarIssue, Severity, SonarSearchResponse } from "./types/sonar.js";
 export type {
   Framework,
