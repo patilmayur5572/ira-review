@@ -15,6 +15,7 @@ import { calculateRisk } from "./riskScorer.js";
 import { ComplexityAnalyzer } from "./complexityAnalyzer.js";
 import { JiraClient } from "../integrations/jiraClient.js";
 import { validateAcceptanceCriteria } from "./acceptanceValidator.js";
+import { buildSummary } from "./summaryBuilder.js";
 import { Notifier } from "../integrations/notifier.js";
 
 const AI_CONCURRENCY = 3;
@@ -136,32 +137,6 @@ export class ReviewEngine {
       );
     }
 
-    // 10. Post comments / print results
-    if (this.config.dryRun) {
-      this.printRiskReport(risk);
-      if (complexity) this.printComplexityReport(complexity);
-      if (acceptanceValidation) this.printAcceptanceReport(acceptanceValidation);
-      for (const comment of comments) {
-        this.printComment(comment);
-      }
-      if (warnings.length > 0) {
-        console.log(`\n⚠️  Warnings:`);
-        for (const w of warnings) {
-          console.log(`   - ${w}`);
-        }
-      }
-    } else {
-      const bitbucket = new BitbucketClient(scm);
-      for (const comment of newComments) {
-        try {
-          await bitbucket.postComment(comment, pullRequestId);
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : "Unknown error";
-          warnings.push(`Failed to post comment on ${comment.filePath}:${comment.line}: ${msg}`);
-        }
-      }
-    }
-
     const result: ReviewResult = {
       pullRequestId,
       framework,
@@ -174,7 +149,34 @@ export class ReviewEngine {
       warnings,
     };
 
-    // 10. Send notifications
+    // 10. Post summary + comments
+    const summary = buildSummary(result);
+
+    if (this.config.dryRun) {
+      console.log(summary);
+      for (const comment of comments) {
+        this.printComment(comment);
+      }
+      if (warnings.length > 0) {
+        console.log(`\n⚠️  Warnings:`);
+        for (const w of warnings) {
+          console.log(`   - ${w}`);
+        }
+      }
+    } else {
+      const bitbucket = new BitbucketClient(scm);
+      await bitbucket.postSummary(summary, pullRequestId);
+      for (const comment of newComments) {
+        try {
+          await bitbucket.postComment(comment, pullRequestId);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          warnings.push(`Failed to post comment on ${comment.filePath}:${comment.line}: ${msg}`);
+        }
+      }
+    }
+
+    // 11. Send notifications
     if (this.config.notifications) {
       const notifier = new Notifier(this.config.notifications);
       await notifier.notify(result);

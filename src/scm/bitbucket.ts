@@ -77,6 +77,30 @@ export class BitbucketClient implements SCMProvider {
     });
   }
 
+  async postSummary(
+    summary: string,
+    pullRequestId: string,
+  ): Promise<void> {
+    const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/comments`;
+
+    const body = {
+      content: { raw: summary },
+    };
+
+    await withRetry(async () => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Bitbucket API error (${response.status}): ${text}`);
+      }
+    });
+  }
+
   private formatComment(comment: ReviewComment): string {
     const { aiReview } = comment;
     const location =
