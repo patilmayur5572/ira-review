@@ -25,7 +25,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build && cp README.md README.github.md && cp README.npm.md README.md",
+    "postpublish": "cp README.github.md README.md && rm README.github.md"
   },
   "keywords": [
     "sonarqube",
