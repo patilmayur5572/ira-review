@@ -1,12 +1,13 @@
 import { Command } from "commander";
 import { ReviewEngine } from "./core/reviewEngine.js";
 import { resolveConfigFromEnv } from "./utils/env.js";
+import { loadConfigFile } from "./utils/configFile.js";
 
 const program = new Command();
 
 program
   .name("ira-review")
-  .description("AI-powered PR review tool with SonarQube integration")
+  .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
   .version("0.2.0");
 
 program
@@ -16,11 +17,15 @@ program
   .option("--sonar-token <token>", "SonarQube API token (or IRA_SONAR_TOKEN)")
   .option("--project-key <key>", "Sonar project key (or IRA_PROJECT_KEY)")
   .option("--pr <id>", "Pull request ID (or IRA_PR)")
+  .option("--scm-provider <provider>", "SCM provider: bitbucket or github (or IRA_SCM_PROVIDER)", "bitbucket")
   .option("--bitbucket-token <token>", "Bitbucket API token (or IRA_BITBUCKET_TOKEN)")
-  .option("--repo <repo>", "workspace/repo-slug (or IRA_REPO)")
+  .option("--repo <repo>", "Bitbucket workspace/repo-slug (or IRA_REPO)")
+  .option("--bitbucket-url <url>", "Bitbucket base URL (or IRA_BITBUCKET_URL)")
+  .option("--github-token <token>", "GitHub API token (or IRA_GITHUB_TOKEN)")
+  .option("--github-repo <repo>", "GitHub owner/repo (or IRA_GITHUB_REPO)")
+  .option("--github-url <url>", "GitHub Enterprise URL (or IRA_GITHUB_URL)")
   .option("--ai-provider <provider>", "AI provider", "openai")
   .option("--ai-model <model>", "AI model to use", "gpt-4o-mini")
-  .option("--bitbucket-url <url>", "Bitbucket base URL (or IRA_BITBUCKET_URL)")
   .option("--dry-run", "Print comments to stdout instead of posting to SCM")
   .option("--min-severity <level>", "Minimum severity to review (BLOCKER|CRITICAL|MAJOR|MINOR|INFO)", "CRITICAL")
   .option("--jira-url <url>", "JIRA base URL (or IRA_JIRA_URL)")
@@ -32,29 +37,38 @@ program
   .option("--teams-webhook <url>", "Teams webhook URL for notifications")
   .action(async (opts) => {
     try {
+      // Load config file first, CLI flags override
+      const fileConfig = loadConfigFile();
+
       const config = resolveConfigFromEnv({
-        sonarUrl: opts.sonarUrl,
-        sonarToken: opts.sonarToken,
-        projectKey: opts.projectKey,
-        pr: opts.pr,
-        bitbucketToken: opts.bitbucketToken,
-        repo: opts.repo,
-        aiProvider: opts.aiProvider,
-        aiModel: opts.aiModel,
-        bitbucketUrl: opts.bitbucketUrl,
-        dryRun: opts.dryRun,
-        minSeverity: opts.minSeverity,
-        jiraUrl: opts.jiraUrl,
-        jiraEmail: opts.jiraEmail,
-        jiraToken: opts.jiraToken,
-        jiraTicket: opts.jiraTicket,
-        jiraAcField: opts.jiraAcField,
-        slackWebhook: opts.slackWebhook,
-        teamsWebhook: opts.teamsWebhook,
+        ...fileConfig,
+        ...(opts.sonarUrl && { sonarUrl: opts.sonarUrl }),
+        ...(opts.sonarToken && { sonarToken: opts.sonarToken }),
+        ...(opts.projectKey && { projectKey: opts.projectKey }),
+        ...(opts.pr && { pr: opts.pr }),
+        ...(opts.scmProvider && { scmProvider: opts.scmProvider }),
+        ...(opts.bitbucketToken && { bitbucketToken: opts.bitbucketToken }),
+        ...(opts.repo && { repo: opts.repo }),
+        ...(opts.bitbucketUrl && { bitbucketUrl: opts.bitbucketUrl }),
+        ...(opts.githubToken && { githubToken: opts.githubToken }),
+        ...(opts.githubRepo && { githubRepo: opts.githubRepo }),
+        ...(opts.githubUrl && { githubUrl: opts.githubUrl }),
+        ...(opts.aiProvider && { aiProvider: opts.aiProvider }),
+        ...(opts.aiModel && { aiModel: opts.aiModel }),
+        ...(opts.dryRun && { dryRun: opts.dryRun }),
+        ...(opts.minSeverity && { minSeverity: opts.minSeverity }),
+        ...(opts.jiraUrl && { jiraUrl: opts.jiraUrl }),
+        ...(opts.jiraEmail && { jiraEmail: opts.jiraEmail }),
+        ...(opts.jiraToken && { jiraToken: opts.jiraToken }),
+        ...(opts.jiraTicket && { jiraTicket: opts.jiraTicket }),
+        ...(opts.jiraAcField && { jiraAcField: opts.jiraAcField }),
+        ...(opts.slackWebhook && { slackWebhook: opts.slackWebhook }),
+        ...(opts.teamsWebhook && { teamsWebhook: opts.teamsWebhook }),
       });
 
       console.log(`\n🔍 IRA — AI-Powered PR Review\n`);
-      console.log(`  Project:  ${config.sonar.projectKey}`);
+      console.log(`  Sonar:    ${config.sonar ? config.sonar.projectKey : "not configured (standalone mode)"}`);
+      console.log(`  SCM:      ${config.scmProvider}`);
       console.log(`  PR:       #${config.pullRequestId}`);
       console.log(`  Provider: ${config.ai.provider}`);
       console.log(`  Dry run:  ${config.dryRun ? "yes" : "no"}\n`);

@@ -11,6 +11,13 @@ export interface BitbucketConfig {
   repoSlug: string;
 }
 
+export interface GitHubConfig {
+  token: string;
+  owner: string;
+  repo: string;
+  baseUrl?: string;
+}
+
 export interface AIConfig {
   provider: "openai";
   apiKey: string;
@@ -24,9 +31,12 @@ export interface JiraConfig {
   acceptanceCriteriaField?: string;
 }
 
+export type SCMProviderType = "bitbucket" | "github";
+
 export interface IraConfig {
-  sonar: SonarConfig;
-  scm: BitbucketConfig;
+  sonar?: SonarConfig;
+  scmProvider: SCMProviderType;
+  scm: BitbucketConfig | GitHubConfig;
   ai: AIConfig;
   pullRequestId: string;
   dryRun?: boolean;

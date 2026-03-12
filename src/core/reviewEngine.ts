@@ -1,5 +1,5 @@
-import type { IraConfig } from "../types/config.js";
-import type { ReviewComment, ReviewResult } from "../types/review.js";
+import type { IraConfig, BitbucketConfig, GitHubConfig } from "../types/config.js";
+import type { ReviewComment, ReviewResult, SCMProvider } from "../types/review.js";
 import type { SonarIssue } from "../types/sonar.js";
 import type { ComplexityReport } from "../types/risk.js";
 import type { AcceptanceValidationResult } from "../types/jira.js";
@@ -9,6 +9,7 @@ import { detectFramework } from "../frameworks/detector.js";
 import { buildPrompt } from "../ai/promptBuilder.js";
 import { createAIProvider } from "../ai/aiClient.js";
 import { BitbucketClient } from "../scm/bitbucket.js";
+import { GitHubClient } from "../scm/github.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
 import { CommentTracker, deduplicateKey } from "../scm/commentTracker.js";
 import { calculateRisk } from "./riskScorer.js";
@@ -33,13 +34,16 @@ export class ReviewEngine {
   }
 
   async run(): Promise<ReviewResult> {
-    const { sonar, ai, scm, pullRequestId } = this.config;
+    const { ai, pullRequestId } = this.config;
     const warnings: string[] = [];
     const repoPath = this.config.repoPath ?? process.cwd();
 
-    // 1. Fetch issues (hard fail)
-    const sonarClient = new SonarClient(sonar);
-    const allIssues = await sonarClient.fetchPullRequestIssues(pullRequestId);
+    // 1. Fetch issues from SonarQube (if configured)
+    let allIssues: SonarIssue[] = [];
+    if (this.config.sonar) {
+      const sonarClient = new SonarClient(this.config.sonar);
+      allIssues = await sonarClient.fetchPullRequestIssues(pullRequestId);
+    }
 
     // 2. Filter by severity
     const filtered = filterIssues(allIssues, this.config.minSeverity);
@@ -54,14 +58,16 @@ export class ReviewEngine {
       warnings.push(`Framework detection failed: ${msg}`);
     }
 
-    // 4. Code complexity analysis (soft fail)
+    // 4. Code complexity analysis (soft fail, requires Sonar)
     let complexity: ComplexityReport | null = null;
-    try {
-      const analyzer = new ComplexityAnalyzer(sonar);
-      complexity = await analyzer.analyze(pullRequestId);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      warnings.push(`Complexity analysis failed: ${msg}`);
+    if (this.config.sonar) {
+      try {
+        const analyzer = new ComplexityAnalyzer(this.config.sonar);
+        complexity = await analyzer.analyze(pullRequestId);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        warnings.push(`Complexity analysis failed: ${msg}`);
+      }
     }
 
     // 5. Flatten for concurrent processing
@@ -130,7 +136,10 @@ export class ReviewEngine {
     // 9. Deduplicate: skip issues already commented on
     let newComments = comments;
     if (!this.config.dryRun) {
-      const tracker = new CommentTracker(scm);
+      const tracker =
+        this.config.scmProvider === "github"
+          ? new CommentTracker(this.config.scm as GitHubConfig, "github")
+          : new CommentTracker(this.config.scm as BitbucketConfig);
       const existing = await tracker.getExistingIraComments(pullRequestId);
       newComments = comments.filter(
         (c) => !existing.has(deduplicateKey(c.filePath, c.line)),
@@ -164,11 +173,11 @@ export class ReviewEngine {
         }
       }
     } else {
-      const bitbucket = new BitbucketClient(scm);
-      await bitbucket.postSummary(summary, pullRequestId);
+      const scmClient = this.createSCMClient();
+      await scmClient.postSummary(summary, pullRequestId);
       for (const comment of newComments) {
         try {
-          await bitbucket.postComment(comment, pullRequestId);
+          await scmClient.postComment(comment, pullRequestId);
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Unknown error";
           warnings.push(`Failed to post comment on ${comment.filePath}:${comment.line}: ${msg}`);
@@ -185,6 +194,13 @@ export class ReviewEngine {
     return result;
   }
 
+  private createSCMClient(): SCMProvider {
+    if (this.config.scmProvider === "github") {
+      return new GitHubClient(this.config.scm as GitHubConfig);
+    }
+    return new BitbucketClient(this.config.scm as BitbucketConfig);
+  }
+
   private printComment(comment: ReviewComment): void {
     console.log(`\n${"─".repeat(60)}`);
     console.log(`📄 ${comment.filePath}:${comment.line}`);
@@ -194,5 +210,4 @@ export class ReviewEngine {
     console.log(`   Impact:   ${comment.aiReview.impact}`);
     console.log(`   Fix:      ${comment.aiReview.suggestedFix}`);
   }
-
 }
