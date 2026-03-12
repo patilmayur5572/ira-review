@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { resolveConfigFromEnv } from "../env.js";
+import type { BitbucketConfig } from "../../types/config.js";
 
 describe("resolveConfigFromEnv", () => {
   const originalEnv = process.env;
@@ -26,12 +27,13 @@ describe("resolveConfigFromEnv", () => {
     setAllEnvVars();
     const config = resolveConfigFromEnv();
 
-    expect(config.sonar.baseUrl).toBe("https://sonar.example.com");
-    expect(config.sonar.token).toBe("sonar-tok");
-    expect(config.sonar.projectKey).toBe("my-project");
+    expect(config.sonar!.baseUrl).toBe("https://sonar.example.com");
+    expect(config.sonar!.token).toBe("sonar-tok");
+    expect(config.sonar!.projectKey).toBe("my-project");
     expect(config.pullRequestId).toBe("42");
-    expect(config.scm.workspace).toBe("workspace");
-    expect(config.scm.repoSlug).toBe("repo");
+    const bbScm = config.scm as BitbucketConfig;
+    expect(bbScm.workspace).toBe("workspace");
+    expect(bbScm.repoSlug).toBe("repo");
     expect(config.ai.apiKey).toBe("sk-test");
   });
 
@@ -42,9 +44,9 @@ describe("resolveConfigFromEnv", () => {
       pr: "99",
     });
 
-    expect(config.sonar.baseUrl).toBe("https://cli.example.com");
+    expect(config.sonar!.baseUrl).toBe("https://cli.example.com");
     expect(config.pullRequestId).toBe("99");
-    expect(config.sonar.token).toBe("sonar-tok");
+    expect(config.sonar!.token).toBe("sonar-tok");
   });
 
   it("throws when required env var is missing", () => {
@@ -82,7 +84,33 @@ describe("resolveConfigFromEnv", () => {
     const config = resolveConfigFromEnv({ dryRun: true });
 
     expect(config.dryRun).toBe(true);
-    expect(config.sonar.baseUrl).toBe("https://sonar.example.com");
+    expect(config.sonar!.baseUrl).toBe("https://sonar.example.com");
     expect(config.scm.token).toBe("");
+  });
+
+  it("returns sonar as undefined when sonar-url is not provided", () => {
+    process.env.IRA_PR = "1";
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const config = resolveConfigFromEnv({ dryRun: true });
+
+    expect(config.sonar).toBeUndefined();
+  });
+
+  it("resolves github SCM config", () => {
+    process.env.IRA_PR = "1";
+    process.env.OPENAI_API_KEY = "sk-test";
+    process.env.IRA_SCM_PROVIDER = "github";
+    process.env.IRA_GITHUB_TOKEN = "gh-tok";
+    process.env.IRA_GITHUB_REPO = "owner/repo";
+
+    const config = resolveConfigFromEnv();
+
+    expect(config.scmProvider).toBe("github");
+    expect(config.scm).toEqual({
+      token: "gh-tok",
+      owner: "owner",
+      repo: "repo",
+    });
   });
 });
