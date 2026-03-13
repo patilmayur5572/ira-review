@@ -8,7 +8,7 @@ const program = new Command();
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
-  .version("0.2.0");
+  .version("0.3.0");
 
 program
   .command("review")
