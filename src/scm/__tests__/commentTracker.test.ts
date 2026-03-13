@@ -62,6 +62,38 @@ describe("CommentTracker", () => {
     const existing = await tracker.getExistingIraComments("1");
     expect(existing.size).toBe(0);
   });
+
+  it("deduplicates GitHub issue comments used as fallback", async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // Review comments - empty
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      // Issue comments with an IRA fallback comment
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve([
+          {
+            id: 1,
+            body: '🔍 **IRA Review** — `typescript:S1234` (BLOCKER)\n\n**File:** `src/app.ts`\n\n> Fix this',
+          },
+        ]),
+      });
+    });
+
+    const tracker = new CommentTracker(
+      { token: "ghp-tok", owner: "org", repo: "repo" },
+      "github",
+    );
+
+    const existing = await tracker.getExistingIraComments("42");
+    expect(existing.has("src/app.ts:0")).toBe(true);
+  });
 });
 
 describe("deduplicateKey", () => {

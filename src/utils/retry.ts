@@ -2,14 +2,12 @@ export interface RetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
-  timeoutMs?: number;
 }
 
 const DEFAULT_OPTIONS: Required<RetryOptions> = {
   maxAttempts: 3,
   baseDelayMs: 1000,
   maxDelayMs: 10000,
-  timeoutMs: 30000,
 };
 
 export class RetryableError extends Error {
@@ -31,20 +29,26 @@ export class TimeoutError extends RetryableError {
 
 export function isRetryable(error: unknown): boolean {
   if (error instanceof TimeoutError) return true;
-  if (error instanceof RetryableError) return true;
-  if (error instanceof TypeError) return true; // network failures
   if (error instanceof Error && error.name === "AbortError") return false;
+  if (error instanceof TypeError) return true; // network failures
 
+  const status = getStatusCode(error);
+  if (status !== undefined) {
+    return status === 429 || status >= 500;
+  }
+
+  return false;
+}
+
+function getStatusCode(error: unknown): number | undefined {
   if (
     error instanceof Error &&
     "statusCode" in error &&
     typeof (error as { statusCode: unknown }).statusCode === "number"
   ) {
-    const code = (error as { statusCode: number }).statusCode;
-    return code === 429 || code >= 500;
+    return (error as { statusCode: number }).statusCode;
   }
-
-  return true;
+  return undefined;
 }
 
 export async function withRetry<T>(
@@ -78,7 +82,7 @@ export async function withRetry<T>(
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit = {},
-  timeoutMs: number = DEFAULT_OPTIONS.timeoutMs,
+  timeoutMs: number = 30000,
 ): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
@@ -112,7 +116,7 @@ export async function fetchWithTimeout(
       error.name === "AbortError" &&
       timedOut
     ) {
-      throw new TimeoutError(`Request to ${url} timed out after ${timeoutMs}ms`);
+      throw new TimeoutError(`Request timed out after ${timeoutMs}ms`);
     }
     throw error;
   } finally {
