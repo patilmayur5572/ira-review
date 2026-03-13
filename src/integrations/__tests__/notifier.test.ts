@@ -5,9 +5,11 @@ import type { ReviewResult } from "../../types/review.js";
 const mockResult: ReviewResult = {
   pullRequestId: "42",
   framework: "react",
+  reviewMode: "sonar",
   totalIssues: 5,
   reviewedIssues: 2,
   comments: [],
+  commentsPosted: 0,
   risk: { level: "HIGH", score: 45, maxScore: 100, factors: [], summary: "" },
   complexity: null,
   acceptanceValidation: null,

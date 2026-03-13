@@ -24,12 +24,16 @@ export interface ReviewComment {
   aiReview: AIReviewComment;
 }
 
+export type ReviewMode = "sonar" | "standalone";
+
 export interface ReviewResult {
   pullRequestId: string;
   framework: Framework | null;
+  reviewMode: ReviewMode;
   totalIssues: number;
   reviewedIssues: number;
   comments: ReviewComment[];
+  commentsPosted: number;
   risk: RiskReport | null;
   complexity: ComplexityReport | null;
   acceptanceValidation: AcceptanceValidationResult | null;
@@ -43,4 +47,6 @@ export interface AIProvider {
 export interface SCMProvider {
   postComment(comment: ReviewComment, pullRequestId: string): Promise<void>;
   postSummary(summary: string, pullRequestId: string): Promise<void>;
+  getDiff(pullRequestId: string): Promise<string>;
+  getFileContent(filePath: string, pullRequestId: string): Promise<string>;
 }

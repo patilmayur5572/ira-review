@@ -1,6 +1,6 @@
 import type { NotificationConfig } from "../types/config.js";
 import type { ReviewResult } from "../types/review.js";
-import { withRetry, fetchWithTimeout } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 export class Notifier {
   private readonly config: NotificationConfig;
@@ -58,7 +58,7 @@ export class Notifier {
           },
           {
             type: "mrkdwn",
-            text: `*Comments posted:* ${result.comments.length}`,
+            text: `*Comments posted:* ${result.commentsPosted}`,
           },
         ],
       },
@@ -102,7 +102,7 @@ export class Notifier {
             { name: "Risk", value: `${riskEmoji} ${result.risk?.level ?? "N/A"} (${result.risk?.score ?? 0}/${result.risk?.maxScore ?? 100})` },
             { name: "Issues", value: `${result.reviewedIssues}/${result.totalIssues} reviewed` },
             { name: "Framework", value: result.framework ?? "not detected" },
-            { name: "Comments", value: `${result.comments.length} posted` },
+            { name: "Comments", value: `${result.commentsPosted} posted` },
           ],
         },
       ],
@@ -132,7 +132,7 @@ export class Notifier {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Webhook error (${response.status}): ${text}`);
+        throw new RetryableError(`Webhook error (${response.status}): ${text}`, response.status);
       }
     });
   }

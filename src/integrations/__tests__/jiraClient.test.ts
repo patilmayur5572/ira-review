@@ -122,6 +122,78 @@ describe("JiraClient", () => {
     );
   });
 
+  it("handles numeric custom field values", async () => {
+    const apiResponse = {
+      key: "PROJ-60",
+      fields: {
+        summary: "Numeric field test",
+        description: null,
+        status: { name: "Open" },
+        issuetype: { name: "Task" },
+        labels: [],
+        customfield_10035: 42,
+      },
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(apiResponse),
+    });
+
+    const client = new JiraClient(jiraConfig);
+    const issue = await client.fetchIssue("PROJ-60");
+
+    expect(issue.fields.acceptanceCriteria).toBe("42");
+  });
+
+  it("handles array custom field values", async () => {
+    const apiResponse = {
+      key: "PROJ-61",
+      fields: {
+        summary: "Array field test",
+        description: null,
+        status: { name: "Open" },
+        issuetype: { name: "Task" },
+        labels: [],
+        customfield_10035: ["Criterion A", "Criterion B", "Criterion C"],
+      },
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(apiResponse),
+    });
+
+    const client = new JiraClient(jiraConfig);
+    const issue = await client.fetchIssue("PROJ-61");
+
+    expect(issue.fields.acceptanceCriteria).toBe("Criterion A\nCriterion B\nCriterion C");
+  });
+
+  it("handles object without content property without crashing", async () => {
+    const apiResponse = {
+      key: "PROJ-62",
+      fields: {
+        summary: "Object without content",
+        description: null,
+        status: { name: "Open" },
+        issuetype: { name: "Task" },
+        labels: [],
+        customfield_10035: { id: "12345", name: "Some option" },
+      },
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(apiResponse),
+    });
+
+    const client = new JiraClient(jiraConfig);
+    const issue = await client.fetchIssue("PROJ-62");
+
+    expect(issue.fields.acceptanceCriteria).toBeNull();
+  });
+
   it("uses custom acceptance criteria field", async () => {
     const apiResponse = {
       key: "PROJ-50",

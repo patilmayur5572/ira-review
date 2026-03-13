@@ -9,7 +9,7 @@ export { buildSummary } from "./core/summaryBuilder.js";
 
 // AI
 export { createAIProvider } from "./ai/aiClient.js";
-export { buildPrompt } from "./ai/promptBuilder.js";
+export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "./ai/promptBuilder.js";
 
 // SCM
 export { BitbucketClient } from "./scm/bitbucket.js";
@@ -30,17 +30,19 @@ export { resolveConfigFromEnv } from "./utils/env.js";
 export { loadConfigFile } from "./utils/configFile.js";
 
 // Types
-export type { IraConfig, SonarConfig, BitbucketConfig, GitHubConfig, AIConfig, JiraConfig, NotificationConfig, SCMProviderType } from "./types/config.js";
+export type { IraConfig, SonarConfig, BitbucketConfig, GitHubConfig, AIConfig, JiraConfig, NotificationConfig, SCMProviderType, AIProviderType } from "./types/config.js";
 export type { SonarIssue, Severity, SonarSearchResponse } from "./types/sonar.js";
 export type {
   Framework,
   ReviewComment,
   ReviewResult,
+  ReviewMode,
   AIReviewComment,
   AIProvider,
   SCMProvider,
   GroupedIssues,
 } from "./types/review.js";
+export type { AIFoundIssue } from "./ai/promptBuilder.js";
 export type { RiskReport, RiskFactor, RiskLevel, ComplexityReport, ComplexityMetric } from "./types/risk.js";
 export type { JiraIssue, AcceptanceValidationResult, AcceptanceCriterion } from "./types/jira.js";
 export type { RetryOptions } from "./utils/retry.js";

@@ -1,4 +1,8 @@
-import type { IraConfig, SCMProviderType } from "../types/config.js";
+import type { IraConfig, SCMProviderType, AIProviderType } from "../types/config.js";
+
+const VALID_SCM_PROVIDERS: SCMProviderType[] = ["bitbucket", "github"];
+const VALID_AI_PROVIDERS: AIProviderType[] = ["openai", "azure-openai", "anthropic", "ollama"];
+const VALID_SEVERITIES = ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"] as const;
 
 export function resolveConfigFromEnv(
   overrides: Partial<FlatConfig> = {},
@@ -6,13 +10,26 @@ export function resolveConfigFromEnv(
   const dryRun = overrides.dryRun ?? false;
 
   const pr = overrides.pr ?? env("IRA_PR");
-  const aiKey = overrides.aiApiKey ?? env("OPENAI_API_KEY");
+  const aiProvider = (overrides.aiProvider ?? optionalEnv("IRA_AI_PROVIDER") ?? "openai") as string;
+  if (!VALID_AI_PROVIDERS.includes(aiProvider as AIProviderType)) {
+    throw new Error(`Invalid AI provider: "${aiProvider}". Must be one of: ${VALID_AI_PROVIDERS.join(", ")}`);
+  }
+  const aiKey = overrides.aiApiKey
+    ?? optionalEnv("IRA_AI_API_KEY")
+    ?? optionalEnv("OPENAI_API_KEY")
+    ?? (aiProvider === "ollama" ? "" : undefined);
+  if (aiKey === undefined) {
+    throw new Error("Missing AI API key. Set IRA_AI_API_KEY or OPENAI_API_KEY environment variable.");
+  }
 
   // Sonar config is now optional
   const sonarConfig = resolveSonarConfig(overrides);
 
   // SCM provider: "bitbucket" (default) or "github"
-  const scmProvider = (overrides.scmProvider ?? optionalEnv("IRA_SCM_PROVIDER") ?? "bitbucket") as SCMProviderType;
+  const scmProvider = (overrides.scmProvider ?? optionalEnv("IRA_SCM_PROVIDER") ?? "bitbucket") as string;
+  if (!VALID_SCM_PROVIDERS.includes(scmProvider as SCMProviderType)) {
+    throw new Error(`Invalid SCM provider: "${scmProvider}". Must be one of: ${VALID_SCM_PROVIDERS.join(", ")}`);
+  }
 
   // Resolve SCM config based on provider
   const scm = scmProvider === "github"
@@ -23,20 +40,40 @@ export function resolveConfigFromEnv(
   const jiraConfig = resolveJiraConfig(overrides);
   const notificationsConfig = resolveNotificationsConfig(overrides);
 
+  const aiBaseUrl = overrides.aiBaseUrl ?? optionalEnv("IRA_AI_BASE_URL");
+  const aiApiVersion = overrides.aiApiVersion ?? optionalEnv("IRA_AI_API_VERSION");
+  const aiDeploymentName = overrides.aiDeploymentName ?? optionalEnv("IRA_AI_DEPLOYMENT_NAME");
+
+  const minSeverity = overrides.minSeverity ?? optionalEnv("IRA_MIN_SEVERITY");
+  if (minSeverity && !VALID_SEVERITIES.includes(minSeverity as typeof VALID_SEVERITIES[number])) {
+    throw new Error(`Invalid min-severity: "${minSeverity}". Must be one of: ${VALID_SEVERITIES.join(", ")}`);
+  }
+
+  const jiraTicket = overrides.jiraTicket ?? optionalEnv("IRA_JIRA_TICKET");
+  if (jiraTicket && !jiraConfig) {
+    console.warn(
+      "⚠️  --jira-ticket is set but JIRA credentials are incomplete (need jira-url, jira-email, jira-token). JIRA validation will be skipped.",
+    );
+  }
+
   return {
     ...(sonarConfig && { sonar: sonarConfig }),
-    scmProvider,
+    scmProvider: scmProvider as SCMProviderType,
     scm,
     ai: {
-      provider: (overrides.aiProvider as "openai") ?? "openai",
+      provider: aiProvider as AIProviderType,
       apiKey: aiKey,
       model: overrides.aiModel,
+      ...(overrides.aiModelCritical && { criticalModel: overrides.aiModelCritical }),
+      ...(aiBaseUrl && { baseUrl: aiBaseUrl }),
+      ...(aiApiVersion && { apiVersion: aiApiVersion }),
+      ...(aiDeploymentName && { deploymentName: aiDeploymentName }),
     },
     pullRequestId: pr,
     dryRun,
-    ...(overrides.minSeverity && { minSeverity: overrides.minSeverity as IraConfig["minSeverity"] }),
+    ...(minSeverity && { minSeverity: minSeverity as IraConfig["minSeverity"] }),
     ...(jiraConfig && { jira: jiraConfig }),
-    ...(overrides.jiraTicket && { jiraTicket: overrides.jiraTicket }),
+    ...(jiraTicket && { jiraTicket }),
     ...(notificationsConfig && { notifications: notificationsConfig }),
   };
 }
@@ -80,7 +117,10 @@ function resolveBitbucketScmConfig(
     token: bbToken ?? "",
     workspace,
     repoSlug,
-    ...(overrides.bitbucketUrl && { baseUrl: overrides.bitbucketUrl }),
+    ...(() => {
+      const bitbucketUrl = overrides.bitbucketUrl ?? optionalEnv("IRA_BITBUCKET_URL");
+      return bitbucketUrl ? { baseUrl: bitbucketUrl } : {};
+    })(),
   };
 }
 
@@ -106,7 +146,10 @@ function resolveGitHubScmConfig(
     token: ghToken ?? "",
     owner,
     repo,
-    ...(overrides.githubUrl && { baseUrl: overrides.githubUrl }),
+    ...(() => {
+      const githubUrl = overrides.githubUrl ?? optionalEnv("IRA_GITHUB_URL");
+      return githubUrl ? { baseUrl: githubUrl } : {};
+    })(),
   };
 }
 
@@ -158,6 +201,10 @@ export interface FlatConfig {
   aiProvider?: string;
   aiModel?: string;
   aiApiKey?: string;
+  aiModelCritical?: string;
+  aiBaseUrl?: string;
+  aiApiVersion?: string;
+  aiDeploymentName?: string;
   dryRun?: boolean;
   minSeverity?: string;
   jiraUrl?: string;

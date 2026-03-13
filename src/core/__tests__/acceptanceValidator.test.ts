@@ -83,6 +83,34 @@ describe("validateAcceptanceCriteria", () => {
     expect(result.overallPass).toBe(false);
   });
 
+  it("parses JSON array wrapped in conversational text", async () => {
+    const wrappedJsonProvider: AIProvider = {
+      review: async () => ({
+        explanation:
+          'Here are the results:\n[{"description":"Auth","met":true,"evidence":"Implemented"}]',
+        impact: "Meets criteria",
+        suggestedFix: "None",
+      }),
+    };
+
+    const issue = makeJiraIssue({
+      acceptanceCriteria: "Auth should be implemented",
+    });
+
+    const result = await validateAcceptanceCriteria(
+      issue,
+      [],
+      null,
+      wrappedJsonProvider,
+    );
+
+    expect(result.criteria).toHaveLength(1);
+    expect(result.criteria[0]!.description).toBe("Auth");
+    expect(result.criteria[0]!.met).toBe(true);
+    expect(result.criteria[0]!.evidence).toBe("Implemented");
+    expect(result.overallPass).toBe(true);
+  });
+
   it("sets overallPass to false when AI reports NOT_MET criteria", async () => {
     const failingProvider: AIProvider = {
       review: async () => ({
