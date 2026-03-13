@@ -34,6 +34,7 @@ export function buildSummary(result: ReviewResult): string {
   lines.push("");
   lines.push(`| Metric | Value |`);
   lines.push(`|---|---|`);
+  lines.push(`| Review mode | ${result.reviewMode === "standalone" ? "AI-only" : "Sonar + AI"} |`);
   lines.push(`| Total issues | ${result.totalIssues} |`);
   lines.push(`| Reviewed (AI) | ${result.reviewedIssues} |`);
   lines.push(

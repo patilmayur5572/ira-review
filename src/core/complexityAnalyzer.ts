@@ -65,45 +65,56 @@ export class ComplexityAnalyzer {
   private async fetchComplexityMetrics(
     pullRequestId: string,
   ): Promise<ComplexityMetric[]> {
-    return withRetry(async () => {
-      const params = new URLSearchParams({
-        component: this.projectKey,
-        pullRequest: pullRequestId,
-        metricKeys: "complexity,cognitive_complexity,ncloc",
-        qualifiers: "FIL",
-        ps: "500",
+    const allComponents: SonarComponentMeasure[] = [];
+    let page = 1;
+
+    while (true) {
+      const data = await withRetry(async () => {
+        const params = new URLSearchParams({
+          component: this.projectKey,
+          pullRequest: pullRequestId,
+          metricKeys: "complexity,cognitive_complexity,ncloc",
+          qualifiers: "FIL",
+          ps: "500",
+          p: String(page),
+        });
+
+        const url = `${this.baseUrl}/api/measures/component_tree?${params}`;
+        const response = await fetchWithTimeout(url, { headers: this.headers });
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new RetryableError(
+            `Sonar Measures API error (${response.status}): ${body}`,
+            response.status,
+          );
+        }
+
+        return (await response.json()) as SonarMeasuresResponse;
       });
 
-      const url = `${this.baseUrl}/api/measures/component_tree?${params}`;
-      const response = await fetchWithTimeout(url, { headers: this.headers });
+      allComponents.push(...data.components);
 
-      if (!response.ok) {
-        const body = await response.text();
-        throw new RetryableError(
-          `Sonar Measures API error (${response.status}): ${body}`,
-          response.status,
-        );
-      }
+      if (allComponents.length >= data.paging.total) break;
+      page++;
+    }
 
-      const data = (await response.json()) as SonarMeasuresResponse;
+    return allComponents.map((comp) => {
+      const getValue = (metric: string) =>
+        Number(comp.measures.find((m) => m.metric === metric)?.value ?? 0);
 
-      return data.components.map((comp) => {
-        const getValue = (metric: string) =>
-          Number(comp.measures.find((m) => m.metric === metric)?.value ?? 0);
+      const colonIndex = (comp.path ?? comp.key).indexOf(":");
+      const filePath =
+        colonIndex >= 0
+          ? (comp.path ?? comp.key).slice(colonIndex + 1)
+          : (comp.path ?? comp.key);
 
-        const colonIndex = (comp.path ?? comp.key).indexOf(":");
-        const filePath =
-          colonIndex >= 0
-            ? (comp.path ?? comp.key).slice(colonIndex + 1)
-            : (comp.path ?? comp.key);
-
-        return {
-          filePath,
-          complexity: getValue("complexity"),
-          cognitiveComplexity: getValue("cognitive_complexity"),
-          linesOfCode: getValue("ncloc"),
-        };
-      });
+      return {
+        filePath,
+        complexity: getValue("complexity"),
+        cognitiveComplexity: getValue("cognitive_complexity"),
+        linesOfCode: getValue("ncloc"),
+      };
     });
   }
 }

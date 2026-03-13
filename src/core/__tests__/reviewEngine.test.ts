@@ -85,9 +85,19 @@ describe("ReviewEngine", () => {
   });
 
   it("runs full pipeline in dry-run mode", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(sonarResponse),
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      // Call 1: Sonar issues. Call 2: complexity analyzer. Call 3+: diff/file content
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve("diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new"),
+        json: () => Promise.resolve(
+          callCount === 1
+            ? sonarResponse
+            : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } },
+        ),
+      });
     });
 
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -130,20 +140,26 @@ describe("ReviewEngine", () => {
   });
 
   it("posts to Bitbucket when not in dry-run mode", async () => {
-    let callCount = 0;
-    globalThis.fetch = vi.fn().mockImplementation(() => {
-      callCount++;
-      // First 2 calls: Sonar issues + complexity. Rest: comment tracker + Bitbucket POST
-      if (callCount <= 2) {
+    let sonarCallCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation((_url: string) => {
+      const url = typeof _url === "string" ? _url : "";
+      // Sonar API calls
+      if (url.includes("sonar.example.com")) {
+        sonarCallCount++;
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve(callCount === 1 ? sonarResponse : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } }),
+          json: () => Promise.resolve(
+            sonarCallCount === 1
+              ? sonarResponse
+              : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } },
+          ),
         });
       }
-      // Comment tracker returns empty
+      // All other calls (diff, file content, comment tracker, post comment, post summary)
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ values: [] }),
+        text: () => Promise.resolve("diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new"),
+        json: () => Promise.resolve({ values: [], content: "file content", encoding: "utf-8" }),
       });
     });
 
@@ -179,9 +195,18 @@ describe("ReviewEngine", () => {
       ],
     };
 
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(emptyResponse),
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve(""),
+        json: () => Promise.resolve(
+          callCount === 1
+            ? emptyResponse
+            : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } },
+        ),
+      });
     });
 
     const engine = new ReviewEngine(baseConfig);
@@ -197,5 +222,41 @@ describe("ReviewEngine", () => {
 
     expect(result.complexity).not.toBeNull();
     expect(result.acceptanceValidation).toBeNull();
+  });
+
+  it("runs standalone AI review when no Sonar is configured", async () => {
+    // Config WITHOUT sonar
+    const standaloneConfig: IraConfig = {
+      scmProvider: "bitbucket",
+      scm: {
+        token: "bb-tok",
+        workspace: "ws",
+        repoSlug: "repo",
+      },
+      ai: {
+        provider: "openai",
+        apiKey: "sk-test",
+      },
+      pullRequestId: "42",
+      dryRun: true,
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve("diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new"),
+        json: () => Promise.resolve({ content: "const x = 1;", encoding: "utf-8" }),
+      });
+    });
+
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const engine = new ReviewEngine(standaloneConfig);
+    const result = await engine.run();
+
+    expect(result.reviewMode).toBe("standalone");
+    expect(result.risk).not.toBeNull();
+
+    consoleSpy.mockRestore();
   });
 });

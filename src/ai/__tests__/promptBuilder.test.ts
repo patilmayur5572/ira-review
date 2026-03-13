@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPrompt } from "../promptBuilder.js";
+import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "../promptBuilder.js";
 import type { SonarIssue } from "../../types/sonar.js";
 
 const baseIssue: SonarIssue = {
@@ -63,5 +63,124 @@ describe("buildPrompt", () => {
     expect(prompt).toContain('"explanation"');
     expect(prompt).toContain('"impact"');
     expect(prompt).toContain('"suggestedFix"');
+  });
+
+  it("includes diff context when provided", () => {
+    const prompt = buildPrompt(baseIssue, null, "diff --git a/file.ts\n+new code");
+    expect(prompt).toContain("<code_context>");
+    expect(prompt).toContain("diff --git a/file.ts");
+    expect(prompt).toContain("</code_context>");
+  });
+
+  it("truncates long diff context to 6000 chars", () => {
+    const longDiff = "x".repeat(8000);
+    const prompt = buildPrompt(baseIssue, null, longDiff);
+    expect(prompt).toContain("<code_context>");
+    expect(prompt).not.toContain("x".repeat(8000));
+  });
+
+  it("wraps sonar message in delimiters for injection safety", () => {
+    const prompt = buildPrompt(baseIssue, null);
+    expect(prompt).toContain("<sonar_message>");
+    expect(prompt).toContain("</sonar_message>");
+  });
+
+  it("works without diff context (backward compatible)", () => {
+    const prompt = buildPrompt(baseIssue, null);
+    expect(prompt).not.toContain("<code_context>");
+    expect(prompt).toContain("typescript:S1234");
+  });
+});
+
+describe("buildStandalonePrompt", () => {
+  it("includes file path, diff, framework context, and source file", () => {
+    const prompt = buildStandalonePrompt(
+      "src/app.ts",
+      "+const x = 1;",
+      "react",
+      "const x = 1;\nexport default x;",
+    );
+
+    expect(prompt).toContain("src/app.ts");
+    expect(prompt).toContain("+const x = 1;");
+    expect(prompt).toContain("react");
+    expect(prompt).toContain("<source_file>");
+    expect(prompt).toContain("const x = 1;\nexport default x;");
+  });
+
+  it("works without source file", () => {
+    const prompt = buildStandalonePrompt("src/utils.ts", "+hello", null);
+
+    expect(prompt).toContain("src/utils.ts");
+    expect(prompt).toContain("+hello");
+    expect(prompt).not.toContain("<source_file>");
+  });
+});
+
+describe("parseStandaloneResponse", () => {
+  it("parses valid JSON array of issues", () => {
+    const input = JSON.stringify([
+      {
+        line: 10,
+        severity: "CRITICAL",
+        category: "security",
+        message: "SQL injection",
+        explanation: "User input is not sanitized",
+        impact: "Data breach",
+        suggestedFix: "Use parameterized queries",
+      },
+    ]);
+
+    const issues = parseStandaloneResponse(input);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].line).toBe(10);
+    expect(issues[0].severity).toBe("CRITICAL");
+    expect(issues[0].category).toBe("security");
+    expect(issues[0].message).toBe("SQL injection");
+  });
+
+  it("parses JSON object with issues array", () => {
+    const input = JSON.stringify({
+      issues: [
+        {
+          line: 5,
+          severity: "MAJOR",
+          category: "bug",
+          message: "Null deref",
+          explanation: "Could be null",
+          impact: "Crash",
+          suggestedFix: "Add null check",
+        },
+      ],
+    });
+
+    const issues = parseStandaloneResponse(input);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].line).toBe(5);
+    expect(issues[0].severity).toBe("MAJOR");
+  });
+
+  it("returns empty array for invalid JSON", () => {
+    const issues = parseStandaloneResponse("not valid json {{{");
+    expect(issues).toEqual([]);
+  });
+
+  it("returns empty array for empty array", () => {
+    const issues = parseStandaloneResponse("[]");
+    expect(issues).toEqual([]);
+  });
+
+  it("handles missing/invalid fields with defaults", () => {
+    const input = JSON.stringify([{ unexpected: true }]);
+    const issues = parseStandaloneResponse(input);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].line).toBe(0);
+    expect(issues[0].severity).toBe("MAJOR");
+    expect(issues[0].category).toBe("bug");
+    expect(issues[0].message).toBe("Issue found");
+    expect(issues[0].explanation).toBe("No explanation provided.");
+    expect(issues[0].impact).toBe("No impact assessment provided.");
+    expect(issues[0].suggestedFix).toBe("No fix suggested.");
   });
 });

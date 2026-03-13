@@ -1,6 +1,6 @@
 {
   "name": "ira-review",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "AI-powered PR reviews with built-in JIRA intelligence",
   "type": "module",
   "exports": {
@@ -24,7 +24,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
     "prepublishOnly": "npm run typecheck && npm test && npm run build && cp README.md README.github.md && cp README.npm.md README.md",
     "postpublish": "cp README.github.md README.md && rm README.github.md"
   },
@@ -44,7 +43,7 @@
     "openai"
   ],
   "author": "Mayur Patil (https://github.com/patilmayur5572)",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/patilmayur5572/ira-review.git"

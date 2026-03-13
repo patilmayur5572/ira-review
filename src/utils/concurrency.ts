@@ -3,6 +3,8 @@ export async function mapWithConcurrency<T, R>(
   concurrency: number,
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
+  if (items.length === 0) return [];
+  const effectiveConcurrency = Math.max(1, Math.floor(concurrency));
   const results: R[] = new Array(items.length);
   let index = 0;
 
@@ -14,7 +16,7 @@ export async function mapWithConcurrency<T, R>(
   }
 
   const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
+    { length: Math.min(effectiveConcurrency, items.length) },
     () => worker(),
   );
 

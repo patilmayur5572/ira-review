@@ -7,7 +7,7 @@ export class GitHubClient implements SCMProvider {
   private readonly headers: Record<string, string>;
   private readonly owner: string;
   private readonly repo: string;
-  private readonly shaCache = new Map<string, string>();
+  private readonly shaCache = new Map<string, Promise<string>>();
 
   constructor(config: GitHubConfig) {
     this.baseUrl = (config.baseUrl ?? "https://api.github.com").replace(
@@ -31,8 +31,10 @@ export class GitHubClient implements SCMProvider {
       try {
         await this.postReviewComment(comment, pullRequestId);
         return;
-      } catch {
-        // Fall back to issue comment if review comment fails
+      } catch (error) {
+        // Only fall back to issue comment on 422/400 (invalid diff position)
+        const status = error instanceof RetryableError ? error.statusCode : undefined;
+        if (status !== 422 && status !== 400) throw error;
       }
     }
 
@@ -82,6 +84,35 @@ export class GitHubClient implements SCMProvider {
       }
 
       return response.text();
+    });
+  }
+
+  async getFileContent(
+    filePath: string,
+    pullRequestId: string,
+  ): Promise<string> {
+    const sha = await this.getHeadSha(pullRequestId);
+    const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+    const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/contents/${encodedPath}?ref=${sha}`;
+
+    return withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        headers: this.headers,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          `GitHub API error (${response.status}): ${text}`,
+          response.status,
+        );
+      }
+
+      const data = (await response.json()) as { content: string; encoding: string };
+      if (data.encoding === "base64") {
+        return Buffer.from(data.content, "base64").toString("utf-8");
+      }
+      return data.content;
     });
   }
 
@@ -139,13 +170,13 @@ export class GitHubClient implements SCMProvider {
     });
   }
 
-  private async getHeadSha(pullRequestId: string): Promise<string> {
+  private getHeadSha(pullRequestId: string): Promise<string> {
     const cached = this.shaCache.get(pullRequestId);
     if (cached) return cached;
 
     const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls/${pullRequestId}`;
 
-    const sha = await withRetry(async () => {
+    const promise = withRetry(async () => {
       const response = await fetchWithTimeout(url, {
         headers: this.headers,
       });
@@ -162,8 +193,8 @@ export class GitHubClient implements SCMProvider {
       return data.head.sha;
     });
 
-    this.shaCache.set(pullRequestId, sha);
-    return sha;
+    this.shaCache.set(pullRequestId, promise);
+    return promise;
   }
 
   private formatComment(comment: ReviewComment): string {
@@ -173,7 +204,10 @@ export class GitHubClient implements SCMProvider {
         ? ""
         : `\n**File:** \`${comment.filePath}\`\n`;
 
+    const marker = `<!-- ira:file=${comment.filePath};line=${comment.line};rule=${comment.rule} -->`;
+
     return [
+      marker,
       `🔍 **IRA Review** — \`${comment.rule}\` (${comment.severity})`,
       location,
       `> ${comment.message}`,

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { createAIProvider } from "../aiClient.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createAIProvider, parseAIResponse } from "../aiClient.js";
+import type { AIConfig } from "../../types/config.js";
 
 vi.mock("openai", () => {
   return {
@@ -55,5 +56,140 @@ describe("createAIProvider", () => {
       apiKey: "sk-test",
     });
     expect(provider).toBeDefined();
+  });
+});
+
+describe("createAIProvider - Azure OpenAI", () => {
+  it("creates an Azure OpenAI provider", () => {
+    const provider = createAIProvider({
+      provider: "azure-openai",
+      apiKey: "azure-key",
+      baseUrl: "https://my-resource.openai.azure.com",
+      deploymentName: "my-deployment",
+      apiVersion: "2024-08-01-preview",
+    });
+    expect(provider).toBeDefined();
+    expect(provider.review).toBeTypeOf("function");
+  });
+
+  it("throws when baseUrl is missing", () => {
+    expect(() =>
+      createAIProvider({
+        provider: "azure-openai",
+        apiKey: "azure-key",
+      }),
+    ).toThrow("Azure OpenAI requires a base URL");
+  });
+});
+
+describe("createAIProvider - Anthropic", () => {
+  const mockFetch = vi.fn();
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mockFetch.mockReset();
+  });
+
+  it("creates an Anthropic provider", () => {
+    const provider = createAIProvider({
+      provider: "anthropic",
+      apiKey: "anthropic-key",
+      model: "claude-sonnet-4-20250514",
+    });
+    expect(provider).toBeDefined();
+    expect(provider.review).toBeTypeOf("function");
+  });
+
+  it("returns structured AI review from Anthropic", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              explanation: "Anthropic found a bug",
+              impact: "High impact",
+              suggestedFix: "Fix it this way",
+            }),
+          },
+        ],
+      }),
+    });
+
+    const provider = createAIProvider({
+      provider: "anthropic",
+      apiKey: "anthropic-key",
+    });
+
+    const result = await provider.review("test prompt");
+    expect(result.explanation).toBe("Anthropic found a bug");
+    expect(result.impact).toBe("High impact");
+    expect(result.suggestedFix).toBe("Fix it this way");
+  });
+});
+
+describe("createAIProvider - Ollama", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mockFetch.mockReset();
+  });
+
+  it("creates an Ollama provider", () => {
+    const provider = createAIProvider({
+      provider: "ollama",
+      apiKey: "",
+      model: "llama3",
+      baseUrl: "http://localhost:11434",
+    });
+    expect(provider).toBeDefined();
+    expect(provider.review).toBeTypeOf("function");
+  });
+
+  it("returns structured AI review from Ollama", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        message: {
+          content: JSON.stringify({
+            explanation: "Ollama found an issue",
+            impact: "Medium impact",
+            suggestedFix: "Try this fix",
+          }),
+        },
+      }),
+    });
+
+    const provider = createAIProvider({
+      provider: "ollama",
+      apiKey: "",
+    });
+
+    const result = await provider.review("test prompt");
+    expect(result.explanation).toBe("Ollama found an issue");
+    expect(result.impact).toBe("Medium impact");
+    expect(result.suggestedFix).toBe("Try this fix");
+  });
+});
+
+describe("createAIProvider - unsupported provider", () => {
+  it("throws for unsupported provider", () => {
+    expect(() =>
+      createAIProvider({
+        provider: "unsupported" as AIConfig["provider"],
+        apiKey: "key",
+      }),
+    ).toThrow("Unsupported AI provider: unsupported");
   });
 });

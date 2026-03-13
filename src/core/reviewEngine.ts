@@ -6,8 +6,9 @@ import type { AcceptanceValidationResult } from "../types/jira.js";
 import { SonarClient } from "./sonarClient.js";
 import { filterIssues, groupIssuesByFile } from "./issueProcessor.js";
 import { detectFramework } from "../frameworks/detector.js";
-import { buildPrompt } from "../ai/promptBuilder.js";
+import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "../ai/promptBuilder.js";
 import { createAIProvider } from "../ai/aiClient.js";
+import type { AIFoundIssue } from "../ai/promptBuilder.js";
 import { BitbucketClient } from "../scm/bitbucket.js";
 import { GitHubClient } from "../scm/github.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
@@ -70,52 +71,172 @@ export class ReviewEngine {
       }
     }
 
-    // 5. Flatten for concurrent processing
-    const flatIssues: IssueWithFile[] = grouped.flatMap((group) =>
-      group.issues.map((issue) => ({ filePath: group.filePath, issue })),
-    );
-
-    // 6. Generate AI reviews with concurrency limit
-    const aiProvider = createAIProvider(ai);
-    const comments: ReviewComment[] = [];
-
-    const results = await mapWithConcurrency(
-      flatIssues,
-      AI_CONCURRENCY,
-      async ({ filePath, issue }): Promise<ReviewComment | null> => {
-        try {
-          const prompt = buildPrompt(issue, framework);
-          const aiReview = await aiProvider.review(prompt);
-          return {
-            filePath,
-            line: issue.textRange?.startLine ?? issue.line ?? 0,
-            rule: issue.rule,
-            severity: issue.severity,
-            message: issue.message,
-            aiReview,
-          };
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : "Unknown error";
-          warnings.push(`AI review failed for ${issue.key}: ${msg}`);
-          return null;
-        }
-      },
-    );
-
-    for (const r of results) {
-      if (r) comments.push(r);
+    // 5. Fetch PR diff for AI context (soft fail)
+    let diffByFile = new Map<string, string>();
+    try {
+      const scmClient = this.createSCMClient();
+      const fullDiff = await scmClient.getDiff(pullRequestId);
+      diffByFile = parseDiffByFile(fullDiff);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      warnings.push(`PR diff fetch failed, AI will review without code context: ${msg}`);
     }
 
-    // 7. Calculate PR risk score
+    // Standalone mode requires diff context — fail fast if empty
+    if (!this.config.sonar && diffByFile.size === 0) {
+      throw new Error(
+        "Standalone AI review requires PR diff context, but no diff could be fetched. " +
+        "Ensure SCM credentials and repo are configured correctly.",
+      );
+    }
+
+    // 6. Fetch source files for changed files (soft fail, deduplicated)
+    const changedFiles = this.config.sonar
+      ? new Set(grouped.map((g) => g.filePath))
+      : new Set(diffByFile.keys());
+    const sourceByFile = new Map<string, string>();
+    if (changedFiles.size > 0) {
+      try {
+        const scmClient = this.createSCMClient();
+        await mapWithConcurrency(
+          [...changedFiles],
+          AI_CONCURRENCY,
+          async (filePath) => {
+            try {
+              const content = await scmClient.getFileContent(filePath, pullRequestId);
+              sourceByFile.set(filePath, content);
+            } catch {
+              // Soft fail per file — diff context is still available
+            }
+          },
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        warnings.push(`Source file fetch failed: ${msg}`);
+      }
+    }
+
+    // 7. Generate AI reviews
+    const aiProvider = createAIProvider(ai);
+    const criticalProvider = ai.criticalModel && ai.criticalModel !== (ai.model ?? "gpt-4o-mini")
+      ? createAIProvider({ ...ai, model: ai.criticalModel })
+      : null;
+    const comments: ReviewComment[] = [];
+
+    const reviewMode = this.config.sonar ? "sonar" : "standalone";
+
+    if (reviewMode === "sonar") {
+      // Sonar mode: AI explains each Sonar issue
+      const flatIssues: IssueWithFile[] = grouped.flatMap((group) =>
+        group.issues.map((issue) => ({ filePath: group.filePath, issue })),
+      );
+
+      const results = await mapWithConcurrency(
+        flatIssues,
+        AI_CONCURRENCY,
+        async ({ filePath, issue }): Promise<ReviewComment | null> => {
+          try {
+            const fileDiff = diffByFile.get(filePath) ?? null;
+            const sourceFile = sourceByFile.get(filePath) ?? null;
+            const prompt = buildPrompt(issue, framework, fileDiff, sourceFile);
+            const useCritical = criticalProvider && (issue.severity === "BLOCKER" || issue.severity === "CRITICAL");
+            const aiReview = await (useCritical ? criticalProvider : aiProvider).review(prompt);
+            return {
+              filePath,
+              line: issue.textRange?.startLine ?? issue.line ?? 0,
+              rule: issue.rule,
+              severity: issue.severity,
+              message: issue.message,
+              aiReview,
+            };
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            warnings.push(`AI review failed for ${issue.key}: ${msg}`);
+            return null;
+          }
+        },
+      );
+
+      for (const r of results) {
+        if (r) comments.push(r);
+      }
+    } else {
+      // Standalone mode: AI reviews each changed file directly
+      const fileEntries = [...diffByFile.entries()];
+
+      const results = await mapWithConcurrency(
+        fileEntries,
+        AI_CONCURRENCY,
+        async ([filePath, diff]): Promise<ReviewComment[]> => {
+          try {
+            const sourceFile = sourceByFile.get(filePath) ?? null;
+            const prompt = buildStandalonePrompt(filePath, diff, framework, sourceFile);
+            const response = await aiProvider.review(prompt);
+            // explanation field contains a JSON-encoded array of issues
+            const foundIssues = parseStandaloneResponse(response.explanation);
+
+            return foundIssues.map((issue: AIFoundIssue) => ({
+              filePath,
+              line: issue.line,
+              rule: `ai/${issue.category}`,
+              severity: issue.severity,
+              message: issue.message,
+              aiReview: {
+                explanation: issue.explanation,
+                impact: issue.impact,
+                suggestedFix: issue.suggestedFix,
+              },
+            }));
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            warnings.push(`AI review failed for ${filePath}: ${msg}`);
+            return [];
+          }
+        },
+      );
+
+      for (const fileComments of results) {
+        comments.push(...fileComments);
+      }
+
+      // Filter standalone comments by minSeverity
+      {
+        const severityOrder = ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"];
+        const threshold = severityOrder.indexOf(this.config.minSeverity ?? "CRITICAL");
+        const filtered = comments.filter(
+          (c) => severityOrder.indexOf(c.severity) <= threshold,
+        );
+        comments.length = 0;
+        comments.push(...filtered);
+      }
+
+      // Populate allIssues from AI findings for risk scoring
+      allIssues = comments.map((c, i) => ({
+        key: `AI-${i}`,
+        rule: c.rule,
+        severity: c.severity as SonarIssue["severity"],
+        component: c.filePath,
+        message: c.message,
+        line: c.line,
+        type: c.rule.startsWith("ai/security") ? "VULNERABILITY" : "CODE_SMELL",
+        flows: [],
+        tags: [c.rule.replace("ai/", "")],
+      }));
+    }
+
+    // 8. Calculate PR risk score
     const filesChanged = new Set(allIssues.map((i) => i.component)).size;
+    const effectiveFiltered = reviewMode === "standalone"
+      ? filterIssues(allIssues, this.config.minSeverity)
+      : filtered;
     const risk = calculateRisk({
       allIssues,
-      filteredIssues: filtered,
+      filteredIssues: effectiveFiltered,
       complexity,
       filesChanged,
     });
 
-    // 8. JIRA acceptance criteria validation (soft fail)
+    // 9. JIRA acceptance criteria validation (soft fail)
     let acceptanceValidation: AcceptanceValidationResult | null = null;
     if (this.config.jira && this.config.jiraTicket) {
       try {
@@ -133,7 +254,7 @@ export class ReviewEngine {
       }
     }
 
-    // 9. Deduplicate: skip issues already commented on
+    // 10. Deduplicate: skip issues already commented on
     let newComments = comments;
     if (!this.config.dryRun) {
       const tracker =
@@ -142,23 +263,25 @@ export class ReviewEngine {
           : new CommentTracker(this.config.scm as BitbucketConfig);
       const existing = await tracker.getExistingIraComments(pullRequestId);
       newComments = comments.filter(
-        (c) => !existing.has(deduplicateKey(c.filePath, c.line)),
+        (c) => !existing.has(deduplicateKey(c.filePath, c.line, c.rule)),
       );
     }
 
     const result: ReviewResult = {
       pullRequestId,
       framework,
+      reviewMode,
       totalIssues: allIssues.length,
       reviewedIssues: comments.length,
       comments,
+      commentsPosted: this.config.dryRun ? comments.length : newComments.length,
       risk,
       complexity,
       acceptanceValidation,
       warnings,
     };
 
-    // 10. Post summary + comments
+    // 11. Post summary + comments
     const summary = buildSummary(result);
 
     if (this.config.dryRun) {
@@ -175,20 +298,28 @@ export class ReviewEngine {
     } else {
       const scmClient = this.createSCMClient();
       await scmClient.postSummary(summary, pullRequestId);
+      let postedCount = 0;
       for (const comment of newComments) {
         try {
           await scmClient.postComment(comment, pullRequestId);
+          postedCount++;
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Unknown error";
           warnings.push(`Failed to post comment on ${comment.filePath}:${comment.line}: ${msg}`);
         }
       }
+      result.commentsPosted = postedCount;
     }
 
-    // 11. Send notifications
+    // 12. Send notifications (soft fail)
     if (this.config.notifications) {
-      const notifier = new Notifier(this.config.notifications);
-      await notifier.notify(result);
+      try {
+        const notifier = new Notifier(this.config.notifications);
+        await notifier.notify(result);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        warnings.push(`Notification delivery failed: ${msg}`);
+      }
     }
 
     return result;
@@ -210,4 +341,26 @@ export class ReviewEngine {
     console.log(`   Impact:   ${comment.aiReview.impact}`);
     console.log(`   Fix:      ${comment.aiReview.suggestedFix}`);
   }
+}
+
+function parseDiffByFile(diff: string): Map<string, string> {
+  const fileMap = new Map<string, string>();
+  const fileSections = diff.split(/^diff --git /m);
+
+  for (const section of fileSections) {
+    if (!section.trim()) continue;
+
+    const headerMatch = section.match(/^a\/(.+?)\s+b\/(.+)/);
+    if (!headerMatch) continue;
+
+    const aPath = headerMatch[1];
+    const bPath = headerMatch[2];
+
+    // Skip deleted files (b path is /dev/null)
+    if (bPath === "/dev/null") continue;
+
+    fileMap.set(bPath, `diff --git ${section}`);
+  }
+
+  return fileMap;
 }

@@ -5,6 +5,7 @@ import type { ReviewResult } from "../../types/review.js";
 const baseResult: ReviewResult = {
   pullRequestId: "42",
   framework: "react",
+  reviewMode: "sonar",
   totalIssues: 5,
   reviewedIssues: 2,
   comments: [
@@ -21,6 +22,7 @@ const baseResult: ReviewResult = {
       },
     },
   ],
+  commentsPosted: 1,
   risk: {
     level: "HIGH",
     score: 45,
