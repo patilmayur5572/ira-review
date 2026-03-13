@@ -63,6 +63,7 @@ const baseConfig: IraConfig = {
     token: "sonar-tok",
     projectKey: "my-project",
   },
+  scmProvider: "bitbucket",
   scm: {
     token: "bb-tok",
     workspace: "ws",
