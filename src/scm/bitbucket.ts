@@ -7,6 +7,7 @@ export class BitbucketClient implements SCMProvider {
   private readonly headers: Record<string, string>;
   private readonly workspace: string;
   private readonly repoSlug: string;
+  private readonly shaCache = new Map<string, Promise<string>>();
 
   constructor(config: BitbucketConfig) {
     this.baseUrl = (config.baseUrl ?? "https://api.bitbucket.org/2.0").replace(
@@ -104,6 +105,79 @@ export class BitbucketClient implements SCMProvider {
     });
   }
 
+  async getFileContent(
+    filePath: string,
+    pullRequestId: string,
+  ): Promise<string> {
+    const sourceHash = await this.getSourceHash(pullRequestId);
+
+    // Fetch the file content at that commit
+    const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+    const fileUrl = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/src/${sourceHash}/${encodedPath}`;
+
+    return withRetry(async () => {
+      const response = await fetchWithTimeout(fileUrl, {
+        headers: this.headers,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          `Bitbucket API error (${response.status}): ${text}`,
+          response.status,
+        );
+      }
+
+      return response.text();
+    });
+  }
+
+  async getDiff(pullRequestId: string): Promise<string> {
+    const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/diff`;
+
+    return withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        headers: this.headers,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          `Bitbucket API error (${response.status}): ${text}`,
+          response.status,
+        );
+      }
+
+      return response.text();
+    });
+  }
+
+  private getSourceHash(pullRequestId: string): Promise<string> {
+    const cached = this.shaCache.get(pullRequestId);
+    if (cached) return cached;
+
+    const promise = withRetry(async () => {
+      const prUrl = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}`;
+      const response = await fetchWithTimeout(prUrl, {
+        headers: this.headers,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          `Bitbucket API error (${response.status}): ${text}`,
+          response.status,
+        );
+      }
+
+      const data = (await response.json()) as { source: { commit: { hash: string } } };
+      return data.source.commit.hash;
+    });
+
+    this.shaCache.set(pullRequestId, promise);
+    return promise;
+  }
+
   private formatComment(comment: ReviewComment): string {
     const { aiReview } = comment;
     const location =
@@ -111,7 +185,10 @@ export class BitbucketClient implements SCMProvider {
         ? ""
         : `\n**File:** \`${comment.filePath}\`\n`;
 
+    const marker = `<!-- ira:file=${comment.filePath};line=${comment.line};rule=${comment.rule} -->`;
+
     return [
+      marker,
       `🔍 **IRA Review** — \`${comment.rule}\` (${comment.severity})`,
       location,
       `> ${comment.message}`,

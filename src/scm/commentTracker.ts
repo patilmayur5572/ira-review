@@ -2,6 +2,7 @@ import type { BitbucketConfig, GitHubConfig } from "../types/config.js";
 import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 const IRA_MARKER = "🔍 **IRA Review**";
+const IRA_META_RE = /<!-- ira:file=([^;]+);line=(\d+);rule=([^\s]+) -->/;
 
 interface BitbucketComment {
   id: number;
@@ -77,9 +78,14 @@ export class CommentTracker {
     while (url) {
       const page = await this.fetchBitbucketPage(url);
       for (const comment of page.values) {
-        if (comment.content.raw.includes(IRA_MARKER) && comment.inline) {
-          const key = `${comment.inline.path}:${comment.inline.to}`;
-          keys.add(key);
+        if (!comment.content.raw.includes(IRA_MARKER)) continue;
+
+        // Prefer structured marker for dedup
+        const meta = comment.content.raw.match(IRA_META_RE);
+        if (meta) {
+          keys.add(`${meta[1]}:${meta[2]}:${meta[3]}`);
+        } else if (comment.inline) {
+          keys.add(`${comment.inline.path}:${comment.inline.to}`);
         }
       }
       url = page.next;
@@ -98,13 +104,42 @@ export class CommentTracker {
       const comments = await this.fetchGitHubComments(url);
 
       for (const comment of comments) {
-        if (comment.body.includes(IRA_MARKER) && comment.path && comment.line) {
+        if (!comment.body.includes(IRA_MARKER)) continue;
+
+        const meta = comment.body.match(IRA_META_RE);
+        if (meta) {
+          keys.add(`${meta[1]}:${meta[2]}:${meta[3]}`);
+        } else if (comment.path && comment.line) {
           keys.add(`${comment.path}:${comment.line}`);
         }
       }
 
       if (comments.length < 100) break;
       page++;
+    }
+
+    // Also check issue comments (used as fallback)
+    let issuePage = 1;
+    while (true) {
+      const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/comments?per_page=100&page=${issuePage}`;
+      const comments = await this.fetchGitHubComments(url);
+
+      for (const comment of comments) {
+        if (!comment.body.includes(IRA_MARKER)) continue;
+
+        const meta = comment.body.match(IRA_META_RE);
+        if (meta) {
+          keys.add(`${meta[1]}:${meta[2]}:${meta[3]}`);
+        } else {
+          const match = comment.body.match(/\*\*File:\*\* `([^`]+)`/);
+          if (match) {
+            keys.add(`${match[1]}:0`);
+          }
+        }
+      }
+
+      if (comments.length < 100) break;
+      issuePage++;
     }
 
     return keys;
@@ -143,6 +178,6 @@ export class CommentTracker {
   }
 }
 
-export function deduplicateKey(filePath: string, line: number): string {
-  return `${filePath}:${line}`;
+export function deduplicateKey(filePath: string, line: number, rule?: string): string {
+  return rule ? `${filePath}:${line}:${rule}` : `${filePath}:${line}`;
 }

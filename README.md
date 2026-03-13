@@ -1,245 +1,45 @@
 # ira-review
 
-**AI-powered PR reviews with optional SonarQube integration and built-in JIRA intelligence.**
+**AI-powered PR reviews with optional SonarQube, JIRA, and Slack/Teams integration.**
 
-We've all been there. Someone opens a PR, and now the team has to comb through it for bugs, security issues, complexity hotspots, and whether it actually meets the acceptance criteria. It's tedious and eats up review time.
+IRA (Intelligent Review Assistant) reviews your pull requests using AI. Point it at a PR and it posts inline comments with plain-English explanations, impact assessments, and suggested fixes. It works in two modes:
 
-IRA takes that off your plate. Point it at a pull request and it runs an AI-powered review — posting clear comments with explanations, impact assessments, and suggested fixes. If you have SonarQube or SonarCloud, IRA can pull in those issues too and enrich them with AI analysis. But Sonar isn't required. IRA works just fine in **standalone mode**, reviewing your PRs with AI alone.
+- **AI-only** - reviews your PR diff directly, finds bugs, security issues, and performance problems
+- **Sonar + AI** - pulls SonarQube issues and enriches them with AI-powered explanations and fixes
 
-On top of that, it scores the overall risk of your PR, flags complex code, checks your JIRA acceptance criteria, deduplicates comments across re-runs, and can send review summaries to Slack or Microsoft Teams.
+Works with **any language**. Supports **GitHub** and **Bitbucket** (Cloud & Server). Runs as a CLI tool in your pipeline - your project doesn't need to be JavaScript.
 
-## Language and framework support
-
-IRA works with **any language**. In standalone mode, it reviews your PR using AI directly. When SonarQube is configured, it picks up the issues that Sonar already found and sends them to AI for explanation and fixes — so if Sonar can analyze your code, IRA can review it.
-
-IRA itself is an npm package and needs Node.js to run, but your project doesn't have to be a JavaScript project. You just run IRA as a CLI tool in your pipeline, the same way you'd use any other linting or code quality tool.
-
-### JavaScript and TypeScript projects
-
-JS/TS projects get the most out of IRA. You can install it as a dev dependency and use the CLI or the programmatic API directly.
+## 30-second demo
 
 ```bash
-npm install --save-dev ira-review
-npx ira-review review --pr 42 --dry-run
-```
+# Try it right now - no install needed
+export IRA_AI_API_KEY=sk-xxxxx
 
-IRA also auto-detects your framework and tailors AI suggestions to match its conventions:
-
-| Framework | How it's detected |
-|---|---|
-| React | `react` in `package.json` dependencies |
-| Angular | `@angular/core` in `package.json` dependencies |
-| Vue | `vue` in `package.json` dependencies |
-| NestJS | `@nestjs/core` in `package.json` dependencies |
-| Node.js | `package.json` exists (fallback) |
-
-### Java, Kotlin, Scala, and other JVM projects
-
-You don't need to touch your `pom.xml` or `build.gradle`. Just add a step in your CI that runs IRA using `npx`. Most CI runners already have Node.js installed.
-
-```yaml
-# GitHub Actions example
-- uses: actions/setup-node@v4
-  with:
-    node-version: 20
-- run: npx ira-review review --pr ${{ github.event.pull_request.number }} --scm-provider github --dry-run
-```
-
-### Python projects
-
-Same idea. Just run IRA as a one-off command in your pipeline.
-
-```yaml
-# GitHub Actions example
-- uses: actions/setup-node@v4
-  with:
-    node-version: 20
-- run: npx ira-review review --pr ${{ github.event.pull_request.number }} --scm-provider github --dry-run
-```
-
-You can also add it to a Makefile if that's how your team works:
-
-```makefile
-review:
-	npx ira-review review --pr $(PR) --dry-run
-```
-
-### Go, Rust, C#, PHP, Ruby, Swift, and everything else
-
-It all works the same way. If Node.js is available in your CI environment (and it almost always is), just run:
-
-```bash
 npx ira-review review \
-  --pr $PR_ID \
+  --pr 42 \
+  --scm-provider github \
+  --github-token ghp_xxxxx \
+  --github-repo owner/repo \
   --dry-run
 ```
 
-Add `--sonar-url` and `--sonar-token` if you want SonarQube analysis included. Without them, IRA runs in standalone mode.
-
-`npx` downloads and runs IRA on the fly, so there's nothing to install beforehand.
-
-### No Node.js? Use Docker
-
-If your CI environment doesn't have Node.js and you can't install it, you can run IRA through Docker:
-
-```bash
-docker run --rm node:20-slim npx ira-review review \
-  --pr $PR_ID \
-  --dry-run
-```
-
-## How it works
-
-### With SonarQube
-
-```mermaid
-flowchart LR
-    subgraph Your CI/CD Pipeline
-        A[Developer pushes code] --> B[SonarQube analyzes PR]
-        B --> C[IRA picks up issues]
-    end
-    subgraph IRA Review Engine
-        C --> D[Filters by severity]
-        D --> E[Detects framework]
-        E --> F[AI generates reviews]
-        F --> G[Calculates risk score]
-    end
-    G --> H[Posts comments on PR]
-    G --> I[Validates JIRA AC]
-    G --> J[Sends notifications]
-```
-
-### Standalone mode (no Sonar)
-
-```mermaid
-flowchart LR
-    subgraph Your CI/CD Pipeline
-        A[Developer pushes code] --> C[IRA reviews PR]
-    end
-    subgraph IRA Review Engine
-        C --> E[Detects framework]
-        E --> F[AI generates reviews]
-        F --> G[Calculates risk score]
-    end
-    G --> H[Posts comments on PR]
-    G --> I[Validates JIRA AC]
-    G --> J[Sends notifications]
-```
-
-Here's the full flow in detail:
-
-```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant CI as CI/CD Pipeline
-    participant Sonar as SonarQube (optional)
-    participant IRA as IRA Review
-    participant AI as OpenAI
-    participant SCM as Bitbucket / GitHub
-    participant JIRA as JIRA (optional)
-    participant Notify as Slack / Teams (optional)
-
-    Dev->>CI: Push code / Open PR
-    opt SonarQube configured
-        CI->>Sonar: Run static analysis
-        Sonar-->>CI: Analysis complete
-    end
-    CI->>IRA: Run ira-review
-    opt SonarQube configured
-        IRA->>Sonar: Fetch PR issues (API)
-        Sonar-->>IRA: Issues matching min severity
-    end
-    IRA->>AI: Send each issue for review
-    AI-->>IRA: Explanation + Impact + Fix
-    IRA->>IRA: Calculate risk score
-    IRA->>IRA: Check for duplicate comments
-    opt JIRA configured
-        IRA->>JIRA: Fetch acceptance criteria
-        JIRA-->>IRA: AC from ticket
-        IRA->>AI: Validate AC against issues
-        AI-->>IRA: Pass/Fail per criterion
-    end
-    IRA->>SCM: Post inline comments (deduplicated)
-    IRA->>SCM: Post summary comment
-    opt Notifications configured
-        IRA->>Notify: Send review summary
-    end
-```
-
-## What it does
-
-1. Reviews your pull request using AI — with or without SonarQube issues
-2. When SonarQube is configured, pulls issues and filters by minimum severity (default: CRITICAL and above)
-3. Detects your framework (React, Angular, Vue, NestJS, Node) to give smarter suggestions
-4. Sends each issue to AI for a plain-English explanation and a concrete fix
-5. Calculates a risk score for the PR based on issues, security concerns, and complexity
-6. Analyzes code complexity and highlights the hotspots
-7. Validates JIRA acceptance criteria against the PR (if you've set up JIRA)
-8. Deduplicates comments — re-runs skip issues that were already commented on
-9. Posts a formatted summary comment with risk score, overview, and complexity hotspots
-10. Posts inline comments back to your pull request on Bitbucket or GitHub
-11. Sends review summaries to Slack and/or Microsoft Teams (if webhooks are configured)
+Drop `--dry-run` to post comments directly on the PR.
 
 ## Install
 
-**Run once with `npx` (no install needed):**
 ```bash
-npx ira-review review --pr 42 --dry-run
+npx ira-review review --pr 42 --dry-run          # run once, no install
+npm install --save-dev ira-review                  # add to project
+npm install -g ira-review                          # install globally
 ```
 
-**Install as a dev dependency (recommended for projects):**
-```bash
-npm install --save-dev ira-review
-npx ira-review review --pr 42 --dry-run
-```
-
-**Install globally:**
-```bash
-npm install -g ira-review
-ira-review review --pr 42 --dry-run
-```
+---
 
 ## Quick start
 
-### Standalone mode (no SonarQube)
+### AI-only review (no SonarQube)
 
-The fastest way to try it out. This runs a pure AI review and prints everything to your terminal.
-
-```bash
-export OPENAI_API_KEY=[REDACTED:api-key]
-
-npx ira-review review \
-  --pr 42 \
-  --dry-run
-```
-
-### With SonarQube
-
-If you have SonarQube or SonarCloud, add your Sonar config to get issue-level analysis:
-
-```bash
-npx ira-review review \
-  --sonar-url https://sonarcloud.io \
-  --sonar-token sqa_xxxxx \
-  --project-key my-org_my-project \
-  --pr 42 \
-  --dry-run
-```
-
-### Posting to Bitbucket
-
-Once you're happy with how it works, drop the `--dry-run` flag and add your Bitbucket credentials to start posting comments on real PRs:
-
-```bash
-npx ira-review review \
-  --pr 42 \
-  --bitbucket-token bb_xxxxx \
-  --repo my-workspace/my-repo
-```
-
-### Posting to GitHub
-
-Use `--scm-provider github` to post comments on GitHub PRs:
+IRA fetches your PR diff and runs a full AI code review - finding bugs, security issues, and performance problems.
 
 ```bash
 npx ira-review review \
@@ -249,217 +49,76 @@ npx ira-review review \
   --github-repo owner/repo
 ```
 
-## Config file
+### Sonar + AI review
 
-Instead of passing flags every time, you can create a `.irarc.json` or `ira.config.json` in your project root for **non-secret settings only**:
-
-```json
-{
-  "sonarUrl": "https://sonarcloud.io",
-  "projectKey": "my-org_my-project",
-  "scmProvider": "github",
-  "githubRepo": "owner/repo",
-  "minSeverity": "MAJOR",
-  "dryRun": false
-}
-```
-
-**⚠️ Never put tokens or API keys in config files.** IRA doesn't store your secrets — that's by design. All tokens (`sonarToken`, `githubToken`, `bitbucketToken`, `aiApiKey`, `jiraToken`) should come from environment variables or CI/CD secrets. The config file is for non-sensitive defaults like URLs, repo names, severity levels, and feature flags.
-
-**Priority order:** CLI flags > config file > environment variables. So you can set your defaults in the config file and override them with flags when needed.
-
-## PR risk scoring
-
-Every review automatically calculates a risk score based on five factors:
-
-| Factor | Max Points | What it measures |
-|---|---|---|
-| Blocker Issues | 30 | Number of blocker-level issues |
-| Critical Issues | 20 | Number of critical-level issues |
-| Issue Density | 15 | Issues per file changed |
-| Security Concerns | 20 | Vulnerabilities, CWE/OWASP-tagged issues |
-| Code Complexity | 15 | Files with cyclomatic/cognitive complexity > 15 |
-
-Risk levels: **LOW** (0-19), **MEDIUM** (20-39), **HIGH** (40-59), **CRITICAL** (60+)
-
-In dry-run mode you'll see something like:
-
-```
-═══════════════════════════════════════════════════
-🟠 PR Risk Score: HIGH (45/100)
-═══════════════════════════════════════════════════
-   ▓ Blocker Issues: 20/30 - 2 blocker issues found
-   ▓ Security Concerns: 10/20 - 1 security-related issue
-   ▓ Code Complexity: 10/15 - 2 high-complexity files
-   ▓ Critical Issues: 5/20 - 1 critical issue found
-   ░ Issue Density: 0/15 - 0.5 issues per file changed
-```
-
-## Code complexity insights
-
-IRA fetches complexity metrics from SonarQube's measures API (when configured) and flags the files that need attention:
-
-- **Cyclomatic complexity** tells you how many paths exist through the code
-- **Cognitive complexity** tells you how hard it is to understand
-- **Lines of code** per file gives you a sense of scale
-
-Any file with complexity above 15 gets flagged as a hotspot. This feeds into the risk score and shows up in dry-run output.
-
-## Summary comments
-
-IRA posts a formatted summary comment on every PR with:
-
-- **Risk score** — the overall risk level with a breakdown of contributing factors
-- **Overview** — a high-level summary of what the review found
-- **Complexity hotspots** — files with high cyclomatic or cognitive complexity
-- **JIRA AC results** — pass/fail status for each acceptance criterion (if JIRA is configured)
-
-This gives reviewers a quick at-a-glance view without scrolling through individual inline comments.
-
-## Comment deduplication
-
-When you re-run IRA on the same PR (e.g., after pushing a fix), it checks existing comments and skips issues that were already commented on. No more duplicate comments cluttering your PR. This works automatically — no configuration needed.
-
-## Slack and Teams notifications
-
-Send review summaries to your team's channels by providing webhook URLs:
+Add your SonarQube config to get issue-level analysis with AI explanations:
 
 ```bash
 npx ira-review review \
   --pr 42 \
-  --slack-webhook https://hooks.slack.com/services/xxx/yyy/zzz \
-  --teams-webhook https://outlook.office.com/webhook/xxx
+  --sonar-url https://sonarcloud.io \
+  --sonar-token sqa_xxxxx \
+  --project-key my-org_my-project \
+  --bitbucket-token bb_xxxxx \
+  --repo my-workspace/my-repo
 ```
 
-Both can be used at the same time. The notification includes the risk score, issue count, and a link back to the PR.
+### Choose your AI provider
 
-## JIRA acceptance criteria validation
+IRA supports four AI providers. Set your provider with `--ai-provider`:
 
-If your team tracks acceptance criteria in JIRA, IRA can check whether a PR actually meets them. This is completely optional and only kicks in when you provide your JIRA config.
+<table>
+<tr><th>Provider</th><th>Command</th></tr>
+<tr><td><b>OpenAI</b> (default)</td><td>
 
 ```bash
-npx ira-review review \
-  --pr 42 \
-  --jira-url https://yourcompany.atlassian.net \
-  --jira-email dev@company.com \
-  --jira-token jira_xxxxx \
-  --jira-ticket PROJ-123 \
+export IRA_AI_API_KEY=sk-xxxxx
+npx ira-review review --pr 42 --dry-run
+```
+
+</td></tr>
+<tr><td><b>Azure OpenAI</b></td><td>
+
+```bash
+export IRA_AI_API_KEY=xxxxx
+npx ira-review review --pr 42 \
+  --ai-provider azure-openai \
+  --ai-base-url https://my-instance.openai.azure.com \
+  --ai-deployment gpt-4o \
+  --ai-api-version 2024-08-01-preview \
   --dry-run
 ```
 
-IRA fetches the JIRA ticket, pulls out the acceptance criteria, and uses AI to check each one against the review analysis. The output looks like:
-
-```
-✅ JIRA Acceptance: PROJ-123 - Add user authentication
-   ✅ CRITERION_1: MET - Authentication endpoint implemented
-      No blocker issues in auth module
-   ❌ CRITERION_2: NOT_MET - Input validation
-      Critical security issue found in login handler
-```
-
-If your team stores acceptance criteria in a custom field, just pass the field ID:
+</td></tr>
+<tr><td><b>Anthropic</b></td><td>
 
 ```bash
---jira-ac-field customfield_10042
+export IRA_AI_API_KEY=sk-ant-xxxxx
+npx ira-review review --pr 42 \
+  --ai-provider anthropic \
+  --ai-model claude-sonnet-4-20250514 \
+  --dry-run
 ```
 
-The default field is `customfield_10035`.
+</td></tr>
+<tr><td><b>Ollama</b> (local, no key)</td><td>
 
-## Using it in code
-
-If you want more control, you can use IRA programmatically instead of the CLI:
-
-```typescript
-import { ReviewEngine } from "ira-review";
-
-const engine = new ReviewEngine({
-  // SonarQube is optional — omit to run in standalone mode
-  sonar: {
-    baseUrl: "https://sonarcloud.io",
-    token: "sqa_xxxxx",
-    projectKey: "my-org_my-project",
-  },
-  scmProvider: "github", // "bitbucket" (default) or "github"
-  scm: {
-    token: "ghp_xxxxx",
-    owner: "my-org",
-    repo: "my-repo",
-  },
-  ai: {
-    provider: "openai",
-    apiKey: process.env.OPENAI_API_KEY!,
-  },
-  pullRequestId: "42",
-  minSeverity: "MAJOR",
-  // Optional JIRA integration
-  jira: {
-    baseUrl: "https://yourcompany.atlassian.net",
-    email: "dev@company.com",
-    token: "jira_xxxxx",
-  },
-  jiraTicket: "PROJ-123",
-  // Optional notifications
-  notifications: {
-    slackWebhookUrl: "https://hooks.slack.com/services/xxx/yyy/zzz",
-    teamsWebhookUrl: "https://outlook.office.com/webhook/xxx",
-  },
-});
-
-const result = await engine.run();
-
-console.log(`Risk: ${result.risk?.level}`);
-console.log(`Complexity hotspots: ${result.complexity?.hotspots.length}`);
-console.log(`AC validation: ${result.acceptanceValidation?.overallPass}`);
+```bash
+npx ira-review review --pr 42 \
+  --ai-provider ollama \
+  --ai-model codellama \
+  --ai-base-url http://localhost:11434 \
+  --dry-run
 ```
 
-If you just want to preview without posting anything, add `dryRun: true` to the config.
+</td></tr>
+</table>
 
-## Environment variables
+> **Tip:** Use `--ai-model-critical gpt-4o` to route BLOCKER/CRITICAL issues to a stronger model while keeping costs low for everything else.
 
-If you're tired of passing flags every time, set these environment variables instead. CLI flags and config file values still take priority.
+---
 
-| Variable | What it does |
-|---|---|
-| `OPENAI_API_KEY` | Your OpenAI API key (required) |
-| `IRA_SONAR_URL` | SonarQube/SonarCloud URL (optional) |
-| `IRA_SONAR_TOKEN` | Sonar API token (optional) |
-| `IRA_PROJECT_KEY` | Sonar project key (optional) |
-| `IRA_PR` | Pull request ID |
-| `IRA_SCM_PROVIDER` | `bitbucket` (default) or `github` |
-| `IRA_BITBUCKET_TOKEN` | Bitbucket API token |
-| `IRA_BITBUCKET_URL` | Bitbucket Server URL (only for self-hosted) |
-| `IRA_REPO` | `workspace/repo-slug` format |
-| `IRA_GITHUB_TOKEN` | GitHub API token |
-| `IRA_GITHUB_REPO` | `owner/repo` format |
-| `IRA_GITHUB_URL` | GitHub Enterprise URL (only for self-hosted) |
-| `IRA_MIN_SEVERITY` | Minimum severity to include: `BLOCKER`, `CRITICAL`, `MAJOR`, `MINOR`, `INFO` (default: `CRITICAL`) |
-| `IRA_SLACK_WEBHOOK` | Slack incoming webhook URL (optional) |
-| `IRA_TEAMS_WEBHOOK` | Microsoft Teams webhook URL (optional) |
-| `IRA_JIRA_URL` | JIRA base URL (optional) |
-| `IRA_JIRA_EMAIL` | JIRA account email (optional) |
-| `IRA_JIRA_TOKEN` | JIRA API token (optional) |
-
-You can also copy `.env.example` to `.env` and fill in the values there.
-
-## CI/CD examples
-
-### Bitbucket Pipelines
-
-```yaml
-pipelines:
-  pull-requests:
-    '**':
-      - step:
-          name: AI Code Review
-          script:
-            - npx ira-review review --pr $BITBUCKET_PR_ID --repo $BITBUCKET_REPO_FULL_NAME
-          environment:
-            OPENAI_API_KEY: $OPENAI_API_KEY
-            IRA_SONAR_URL: $SONAR_URL
-            IRA_SONAR_TOKEN: $SONAR_TOKEN
-            IRA_PROJECT_KEY: $SONAR_PROJECT_KEY
-            IRA_BITBUCKET_TOKEN: $BB_TOKEN
-```
+## CI/CD setup
 
 ### GitHub Actions
 
@@ -476,26 +135,55 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: |
-          npx ira-review review \
-            --pr ${{ github.event.pull_request.number }} \
-            --scm-provider github \
-            --github-token ${{ secrets.GITHUB_TOKEN }} \
-            --github-repo ${{ github.repository }}
+
+      - run: npx ira-review review
+             --pr ${{ github.event.pull_request.number }}
+             --scm-provider github
+             --github-token ${{ secrets.GITHUB_TOKEN }}
+             --github-repo ${{ github.repository }}
+             --no-config-file
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          IRA_SONAR_URL: ${{ secrets.SONAR_URL }}
-          IRA_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          IRA_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+          IRA_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-Remove the `IRA_SONAR_*` variables to run in standalone mode without SonarQube.
+> Add `IRA_SONAR_URL`, `IRA_SONAR_TOKEN`, and `IRA_PROJECT_KEY` env vars for Sonar + AI mode. Without them, IRA runs in AI-only mode.
 
-All tokens come from your pipeline's secret variables. IRA never stores or transmits them anywhere else.
+### Bitbucket Pipelines
 
-## What the comments look like
+```yaml
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: AI Code Review
+          script:
+            - npx ira-review review
+                --pr $BITBUCKET_PR_ID
+                --repo $BITBUCKET_REPO_FULL_NAME
+                --no-config-file
+          environment:
+            IRA_AI_API_KEY: $OPENAI_API_KEY
+            IRA_BITBUCKET_TOKEN: $BB_TOKEN
+```
 
-When IRA posts to your PR, each comment looks something like this:
+### Any language, any CI
+
+IRA is an npm package, but your project can be anything - Java, Python, Go, Rust, C#, PHP, Ruby. If Node.js is available (and it almost always is), just add `npx ira-review review ...` as a step.
+
+```bash
+# No Node.js? Use Docker
+docker run --rm node:20-slim npx ira-review review --pr $PR_ID --dry-run
+```
+
+> **Security:** Use `--no-config-file` in CI pipelines that run on untrusted PRs (forks, external contributors). This prevents a malicious `.irarc.json` in the PR from altering review behavior.
+
+---
+
+## What IRA posts on your PR
+
+### Inline comments
+
+Each issue gets an inline comment on the exact line:
 
 ```
 🔍 IRA Review - typescript:S1854 (BLOCKER)
@@ -512,107 +200,327 @@ Suggested Fix: Remove the assignment on line 10 entirely, or if the
 variable is needed later, move the declaration to where it's first used.
 ```
 
-## CLI reference
+### Summary comment
+
+Every PR also gets a summary with risk score, issue breakdown, complexity hotspots, and JIRA validation results:
+
+```
+# 🔍 IRA Review Summary
+
+## 🟠 Risk: HIGH (45/100)
+
+| Factor           | Score | Detail                        |
+|-------------------|-------|-------------------------------|
+| Blocker Issues    | 20/30 | 2 blocker issues found        |
+| Security Concerns | 10/20 | 1 security-related issue      |
+| Code Complexity   | 10/15 | 2 high-complexity files       |
+| Critical Issues   | 5/20  | 1 critical issue found        |
+| Issue Density     | 0/15  | 0.5 issues per file changed   |
+```
+
+---
+
+## Features
+
+### PR risk scoring
+
+Every review calculates a risk score (0-100) from five factors:
+
+| Factor | Max | What it measures |
+|---|---|---|
+| Blocker Issues | 30 | Number of blocker-level issues |
+| Critical Issues | 20 | Number of critical-level issues |
+| Issue Density | 15 | Issues per file changed |
+| Security Concerns | 20 | Vulnerabilities, CWE/OWASP-tagged issues |
+| Code Complexity | 15 | Files with cyclomatic/cognitive complexity > 15 |
+
+**LOW** (0-19) · **MEDIUM** (20-39) · **HIGH** (40-59) · **CRITICAL** (60+)
+
+### Framework detection
+
+IRA auto-detects your framework and tailors AI suggestions to match its conventions:
+
+| Framework | Detection |
+|---|---|
+| React | `react` in `package.json` dependencies |
+| Angular | `@angular/core` in `package.json` dependencies |
+| Vue | `vue` in `package.json` dependencies |
+| NestJS | `@nestjs/core` in `package.json` dependencies |
+| Node.js | `package.json` exists (fallback) |
+
+### Comment deduplication
+
+Re-running IRA on the same PR (e.g., after pushing a fix) skips issues that were already commented on. Each comment is tracked by file, line, and rule - so different issues on the same line are preserved while true duplicates are skipped. No configuration needed.
+
+### JIRA acceptance criteria
+
+Validate your PR against JIRA acceptance criteria using AI:
+
+```bash
+npx ira-review review --pr 42 \
+  --jira-url https://yourcompany.atlassian.net \
+  --jira-email dev@company.com \
+  --jira-token jira_xxxxx \
+  --jira-ticket PROJ-123
+```
+
+Output:
+
+```
+✅ JIRA: PROJ-123 - Add user authentication
+   ✅ Authentication endpoint implemented
+   ❌ Input validation - Critical security issue in login handler
+```
+
+Use `--jira-ac-field customfield_10042` if your acceptance criteria live in a custom field (default: `customfield_10035`).
+
+### Slack & Teams notifications
+
+```bash
+--slack-webhook https://hooks.slack.com/services/xxx/yyy/zzz
+--teams-webhook https://outlook.office.com/webhook/xxx
+```
+
+Both can be used at the same time. Notifications include risk score, issue count, and framework detected.
+
+---
+
+## How it works
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant CI as CI/CD Pipeline
+    participant Sonar as SonarQube (optional)
+    participant IRA as IRA Review
+    participant AI as AI Provider
+    participant SCM as GitHub / Bitbucket
+    participant JIRA as JIRA (optional)
+    participant Notify as Slack / Teams (optional)
+
+    Dev->>CI: Push code / Open PR
+    opt SonarQube configured
+        CI->>Sonar: Run static analysis
+        Sonar-->>CI: Analysis complete
+    end
+    CI->>IRA: Run ira-review
+    IRA->>SCM: Fetch PR diff + source files
+    opt SonarQube configured
+        IRA->>Sonar: Fetch PR issues
+    end
+    IRA->>AI: Review each file/issue
+    AI-->>IRA: Explanation + Impact + Fix
+    IRA->>IRA: Calculate risk score + deduplicate
+    opt JIRA configured
+        IRA->>JIRA: Fetch acceptance criteria
+        IRA->>AI: Validate AC against findings
+    end
+    IRA->>SCM: Post inline comments + summary
+    opt Notifications configured
+        IRA->>Notify: Send review summary
+    end
+```
+
+---
+
+## Configuration
+
+### Config file
+
+Create `.irarc.json` or `ira.config.json` in your project root:
+
+```json
+{
+  "projectKey": "my-org_my-project",
+  "scmProvider": "github",
+  "githubRepo": "owner/repo",
+  "aiModel": "gpt-4o-mini",
+  "minSeverity": "MAJOR",
+  "dryRun": false
+}
+```
+
+**Priority:** CLI flags > environment variables > config file.
+
+> **⚠️ Security:** Config files only accept non-sensitive settings (repo names, model selection, severity, flags). Tokens, API keys, service URLs, and webhooks are **automatically ignored** if found in config files. Use environment variables or CLI flags for those. Use `--no-config-file` in CI with untrusted PRs.
+
+### Environment variables
+
+All settings can be configured via env vars. Copy `.env.example` to `.env` to get started.
+
+| Variable | Description |
+|---|---|
+| **AI** | |
+| `IRA_AI_API_KEY` | AI provider API key (**required**, except Ollama). Also accepts `OPENAI_API_KEY` |
+| `IRA_AI_BASE_URL` | AI provider base URL (Azure endpoint, Ollama URL) |
+| `IRA_AI_API_VERSION` | Azure OpenAI API version |
+| `IRA_AI_DEPLOYMENT_NAME` | Azure OpenAI deployment name |
+| **SonarQube** *(optional)* | |
+| `IRA_SONAR_URL` | SonarQube/SonarCloud URL |
+| `IRA_SONAR_TOKEN` | Sonar API token |
+| `IRA_PROJECT_KEY` | Sonar project key |
+| **SCM** | |
+| `IRA_PR` | Pull request ID |
+| `IRA_SCM_PROVIDER` | `bitbucket` (default) or `github` |
+| `IRA_BITBUCKET_TOKEN` | Bitbucket API token |
+| `IRA_BITBUCKET_URL` | Bitbucket Server base URL (self-hosted only) |
+| `IRA_REPO` | Bitbucket `workspace/repo-slug` |
+| `IRA_GITHUB_TOKEN` | GitHub API token |
+| `IRA_GITHUB_REPO` | GitHub `owner/repo` |
+| `IRA_GITHUB_URL` | GitHub Enterprise base URL (self-hosted only) |
+| **Review** | |
+| `IRA_MIN_SEVERITY` | Minimum severity: `BLOCKER`, `CRITICAL` (default), `MAJOR`, `MINOR`, `INFO` |
+| **JIRA** *(optional)* | |
+| `IRA_JIRA_URL` | JIRA base URL |
+| `IRA_JIRA_EMAIL` | JIRA account email |
+| `IRA_JIRA_TOKEN` | JIRA API token |
+| `IRA_JIRA_TICKET` | JIRA ticket key (e.g. `PROJ-123`) |
+| **Notifications** *(optional)* | |
+| `IRA_SLACK_WEBHOOK` | Slack incoming webhook URL |
+| `IRA_TEAMS_WEBHOOK` | Microsoft Teams webhook URL |
+
+### CLI reference
 
 ```
 ira-review review [options]
 
-Options:
-  --sonar-url <url>          SonarQube base URL (optional — omit for standalone mode)
-  --sonar-token <token>      Sonar API token
-  --project-key <key>        Sonar project key
-  --pr <id>                  Pull request ID
-  --scm-provider <provider>  SCM provider: bitbucket (default) or github
-  --bitbucket-token <token>  Bitbucket API token
-  --bitbucket-url <url>      Bitbucket base URL (self-hosted)
-  --repo <repo>              workspace/repo-slug (Bitbucket)
-  --github-token <token>     GitHub API token
-  --github-repo <repo>       owner/repo (GitHub)
-  --github-url <url>         GitHub Enterprise base URL (self-hosted)
-  --min-severity <level>     Minimum issue severity: BLOCKER, CRITICAL, MAJOR, MINOR, INFO (default: CRITICAL)
-  --ai-provider <provider>   AI provider (default: openai)
-  --ai-model <model>         AI model (default: gpt-4o-mini)
-  --slack-webhook <url>      Slack incoming webhook URL for notifications
-  --teams-webhook <url>      Microsoft Teams webhook URL for notifications
-  --dry-run                  Print to terminal instead of posting
-  --jira-url <url>           JIRA base URL
-  --jira-email <email>       JIRA account email
-  --jira-token <token>       JIRA API token
-  --jira-ticket <key>        JIRA ticket key (e.g. PROJ-123)
-  --jira-ac-field <field>    Custom field ID for acceptance criteria
+Required:
+  --pr <id>                    Pull request ID (or IRA_PR)
+
+SCM:
+  --scm-provider <provider>    bitbucket (default) or github
+  --bitbucket-token <token>    Bitbucket API token
+  --repo <repo>                Bitbucket workspace/repo-slug
+  --bitbucket-url <url>        Bitbucket Server base URL
+  --github-token <token>       GitHub API token
+  --github-repo <repo>         GitHub owner/repo
+  --github-url <url>           GitHub Enterprise base URL
+
+AI:
+  --ai-provider <provider>     openai (default), azure-openai, anthropic, ollama
+  --ai-model <model>           AI model (default: gpt-4o-mini)
+  --ai-model-critical <model>  Stronger model for BLOCKER/CRITICAL issues
+  --ai-base-url <url>          AI provider base URL
+  --ai-api-version <version>   Azure OpenAI API version
+  --ai-deployment <name>       Azure OpenAI deployment name
+
+SonarQube (optional):
+  --sonar-url <url>            SonarQube/SonarCloud base URL
+  --sonar-token <token>        Sonar API token
+  --project-key <key>          Sonar project key
+
+Review:
+  --min-severity <level>       BLOCKER, CRITICAL (default), MAJOR, MINOR, INFO
+  --dry-run                    Print to terminal instead of posting
+
+JIRA (optional):
+  --jira-url <url>             JIRA base URL
+  --jira-email <email>         JIRA account email
+  --jira-token <token>         JIRA API token
+  --jira-ticket <key>          JIRA ticket key (e.g. PROJ-123)
+  --jira-ac-field <field>      Custom field ID for acceptance criteria
+
+Notifications (optional):
+  --slack-webhook <url>        Slack webhook URL
+  --teams-webhook <url>        Microsoft Teams webhook URL
+
+Config:
+  --config <path>              Path to config file
+  --no-config-file             Disable auto-loading config from repo
 ```
 
-## How it's built
+---
 
-```
-src/
-  core/
-    sonarClient.ts           Sonar API client with pagination and retry
-    issueProcessor.ts        Filters and groups issues by file
-    reviewEngine.ts          Orchestrates the full review pipeline
-    riskScorer.ts            Calculates PR risk score from 5 factors
-    complexityAnalyzer.ts    Fetches and analyzes code complexity metrics
-    acceptanceValidator.ts   Validates JIRA acceptance criteria using AI
-    summaryBuilder.ts        Builds formatted summary comments for PRs
-  ai/
-    aiClient.ts              Pluggable AI provider (OpenAI for now)
-    promptBuilder.ts         Builds structured prompts per issue
-  scm/
-    bitbucket.ts             Posts inline PR comments to Bitbucket
-    github.ts                Posts inline PR comments to GitHub
-    commentTracker.ts        Tracks existing comments for deduplication
-  integrations/
-    jiraClient.ts            JIRA REST API client
-    notifier.ts              Sends review summaries to Slack and Teams
-  frameworks/
-    detector.ts              Auto-detects React, Angular, Vue, NestJS, Node
-  utils/
-    retry.ts                 Exponential backoff with jitter
-    concurrency.ts           Caps parallel AI calls (default: 3)
-    env.ts                   Resolves config from env vars and CLI flags
-    configFile.ts            Loads .irarc.json or ira.config.json from project root
-  types/
-    config.ts                All config interfaces
-    sonar.ts                 Sonar API types
-    review.ts                Review result types and provider interfaces
-    risk.ts                  Risk scoring and complexity types
-    jira.ts                  JIRA and acceptance criteria types
+## Programmatic API
+
+Use IRA as a library for custom integrations:
+
+```typescript
+import { ReviewEngine } from "ira-review";
+
+const engine = new ReviewEngine({
+  scmProvider: "github",
+  scm: {
+    token: process.env.GITHUB_TOKEN!,
+    owner: "my-org",
+    repo: "my-repo",
+  },
+  ai: {
+    provider: "openai",
+    apiKey: process.env.IRA_AI_API_KEY!,
+  },
+  pullRequestId: "42",
+  // Optional: add Sonar, JIRA, notifications
+  // sonar: { baseUrl: "...", token: "...", projectKey: "..." },
+  // jira: { baseUrl: "...", email: "...", token: "..." },
+  // jiraTicket: "PROJ-123",
+  // notifications: { slackWebhookUrl: "...", teamsWebhookUrl: "..." },
+});
+
+const result = await engine.run();
+
+console.log(`Risk: ${result.risk?.level} (${result.risk?.score}/${result.risk?.maxScore})`);
+console.log(`Issues: ${result.totalIssues} found, ${result.reviewedIssues} reviewed`);
+console.log(`Comments: ${result.commentsPosted} posted`);
 ```
 
-## Built-in reliability
+Add `dryRun: true` to preview without posting.
 
-All external API calls to Sonar, OpenAI, Bitbucket, GitHub, and JIRA automatically retry up to 3 times with exponential backoff. AI calls run with a concurrency limit of 3 so you don't hit rate limits. If something optional like complexity analysis, JIRA validation, or notifications fails, the review still completes and the failure shows up as a warning instead of crashing the whole run. You don't need to configure any of this.
+---
 
 ## Security
 
-Your tokens are safe.
+- **Runs on your servers** - IRA is an npm package that runs in your CI. Your tokens never leave your infrastructure.
+- **No telemetry** - zero analytics, tracking, or phone-home calls. The only network calls are to APIs you configure.
+- **Config file protection** - tokens, keys, URLs, and webhooks are automatically blocked from config files. Only non-sensitive settings are accepted.
+- **Prompt injection safety** - untrusted content (diffs, source code, JIRA text) is escaped and delimited to prevent prompt injection attacks.
+- **Open source** - every line is auditable. Only compiled `dist/` ships to npm.
 
-- IRA runs on your servers, not ours. It's just an npm package. When it runs in your CI/CD pipeline, your tokens stay in your infrastructure. The package author has zero access to them.
-- The code is fully open source. Every line is auditable. Tokens are only used in `Authorization` headers to APIs you already own.
-- Only compiled code ships to npm. No source files, no config, no secrets. Just the `dist/` folder.
-- There's no telemetry, no analytics, and no tracking. The only network calls IRA makes are to the APIs you explicitly configure: Sonar, OpenAI, Bitbucket/GitHub, and optionally JIRA, Slack, and Teams.
+## Built-in reliability
 
-Think of it like ESLint or the AWS CLI. You install it, give it your credentials at runtime, and it does its job. Nobody else sees your data.
+- **Automatic retries** - all API calls retry up to 3x with exponential backoff and jitter
+- **Timeout protection** - every HTTP call has a 30-second timeout
+- **Concurrency control** - AI calls capped at 3 concurrent requests
+- **Soft failures** - optional features (complexity, JIRA, notifications) fail gracefully with warnings
+- **Full pagination** - Sonar issues and complexity metrics paginate through all results
+
+---
 
 ## Development
 
 ```bash
 npm install          # install deps
 npm run typecheck    # type check
-npm test             # run all tests
+npm test             # run all tests (133 tests, 19 files)
 npm run test:watch   # watch mode
 npm run build        # build ESM + CJS + types
+```
+
+### Project structure
+
+```
+src/
+  core/           reviewEngine, riskScorer, sonarClient, complexityAnalyzer,
+                  acceptanceValidator, summaryBuilder, issueProcessor
+  ai/             aiClient (OpenAI, Azure, Anthropic, Ollama), promptBuilder
+  scm/            github, bitbucket, commentTracker
+  integrations/   jiraClient, notifier (Slack, Teams)
+  frameworks/     detector (React, Angular, Vue, NestJS, Node)
+  utils/          retry, concurrency, env, configFile
+  types/          config, sonar, review, risk, jira
 ```
 
 ## Requirements
 
 - Node.js 18+
-- An OpenAI API key (pay-per-use, not free tier)
-- A Bitbucket or GitHub repo with an open pull request
-- SonarQube or SonarCloud project with PR analysis enabled (optional — IRA works without it)
-- JIRA Cloud instance for acceptance criteria validation (optional)
-- Slack/Teams webhook URLs for notifications (optional)
+- AI provider API key (OpenAI, Azure OpenAI, Anthropic) or Ollama running locally
+- GitHub or Bitbucket repo with an open pull request
+- SonarQube/SonarCloud *(optional)*
+- JIRA Cloud *(optional)*
+- Slack/Teams webhooks *(optional)*
 
 ## License
 
-MIT
+AGPL-3.0 - see [LICENSE](LICENSE) for details.
+
+For commercial licensing (use IRA in proprietary projects without AGPL obligations), contact [mayur@ira-review.dev](mailto:mayur@ira-review.dev).
