@@ -85,6 +85,31 @@ describe("BitbucketClient", () => {
     );
   });
 
+  it("fetches PR diff", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve("diff --git a/file.ts b/file.ts\n+added line"),
+    });
+
+    const client = new BitbucketClient({
+      token: "bb-token",
+      workspace: "my-ws",
+      repoSlug: "my-repo",
+    });
+
+    const diff = await client.getDiff("42");
+
+    expect(diff).toContain("diff --git");
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://api.bitbucket.org/2.0/repositories/my-ws/my-repo/pullrequests/42/diff",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer bb-token",
+        }),
+      }),
+    );
+  });
+
   it("throws on API error", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

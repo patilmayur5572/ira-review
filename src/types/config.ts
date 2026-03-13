@@ -18,10 +18,16 @@ export interface GitHubConfig {
   baseUrl?: string;
 }
 
+export type AIProviderType = "openai" | "azure-openai" | "anthropic" | "ollama";
+
 export interface AIConfig {
-  provider: "openai";
+  provider: AIProviderType;
   apiKey: string;
   model?: string;
+  criticalModel?: string;
+  baseUrl?: string;
+  apiVersion?: string;
+  deploymentName?: string;
 }
 
 export interface JiraConfig {

@@ -16,12 +16,13 @@ describe("loadConfigFile", () => {
   it("returns empty object when no config file exists", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
-    const result = loadConfigFile("/fake/dir");
+    const result = loadConfigFile(undefined, "/fake/dir");
 
     expect(result).toEqual({});
   });
 
   it("loads and maps .irarc.json", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(fs.existsSync).mockImplementation((p) =>
       String(p).endsWith(".irarc.json"),
     );
@@ -38,13 +39,21 @@ describe("loadConfigFile", () => {
       }),
     );
 
-    const result = loadConfigFile("/fake/dir");
+    const result = loadConfigFile(undefined, "/fake/dir");
 
-    expect(result.sonarUrl).toBe("https://sonar.example.com");
+    // Sensitive fields (sonarUrl, sonarToken, githubToken) are blocked for security
+    expect(result.sonarUrl).toBeUndefined();
+    expect(result.githubToken).toBeUndefined();
+    // Safe fields are still mapped
+    expect(result.projectKey).toBe("proj");
     expect(result.scmProvider).toBe("github");
-    expect(result.githubToken).toBe("gh-tok");
     expect(result.githubRepo).toBe("owner/repo");
     expect(result.dryRun).toBe(true);
+    // Warning is logged for sensitive fields
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("sensitive fields that are ignored"),
+    );
+    warnSpy.mockRestore();
   });
 
   it("prefers .irarc.json over ira.config.json", () => {
@@ -53,7 +62,7 @@ describe("loadConfigFile", () => {
       JSON.stringify({ pr: "from-irarc" }),
     );
 
-    const result = loadConfigFile("/fake/dir");
+    const result = loadConfigFile(undefined, "/fake/dir");
 
     expect(result.pr).toBe("from-irarc");
     // Should read .irarc.json (first match)
@@ -71,7 +80,7 @@ describe("loadConfigFile", () => {
       JSON.stringify({ pr: "from-config" }),
     );
 
-    const result = loadConfigFile("/fake/dir");
+    const result = loadConfigFile(undefined, "/fake/dir");
 
     expect(result.pr).toBe("from-config");
   });
@@ -80,7 +89,7 @@ describe("loadConfigFile", () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue("{ not valid json");
 
-    expect(() => loadConfigFile("/fake/dir")).toThrow("Failed to parse config file");
+    expect(() => loadConfigFile(undefined, "/fake/dir")).toThrow("Failed to parse config file");
   });
 
   it("ignores unknown fields", () => {
@@ -93,7 +102,7 @@ describe("loadConfigFile", () => {
       }),
     );
 
-    const result = loadConfigFile("/fake/dir");
+    const result = loadConfigFile(undefined, "/fake/dir");
 
     expect(result.pr).toBe("42");
     expect(Object.keys(result)).toEqual(["pr"]);
@@ -109,7 +118,7 @@ describe("loadConfigFile", () => {
       }),
     );
 
-    const result = loadConfigFile("/fake/dir");
+    const result = loadConfigFile(undefined, "/fake/dir");
 
     expect(result.sonarUrl).toBeUndefined();
     expect(result.dryRun).toBeUndefined();

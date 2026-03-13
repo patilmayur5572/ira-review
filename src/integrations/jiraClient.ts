@@ -54,16 +54,29 @@ export class JiraClient {
 
   private extractText(field: unknown): string | null {
     if (typeof field === "string") return field;
+    if (typeof field === "number") return String(field);
     if (!field || typeof field !== "object") return null;
 
-    // Handle Atlassian Document Format (ADF)
-    const doc = field as { content?: Array<{ content?: Array<{ text?: string }> }> };
-    if (!doc.content) return null;
+    if (Array.isArray(field)) {
+      const texts = field.map((v) => this.extractText(v)).filter(Boolean);
+      return texts.length > 0 ? texts.join("\n") : null;
+    }
 
-    return doc.content
-      .flatMap((block) => block.content ?? [])
-      .map((inline) => inline.text ?? "")
-      .join(" ")
-      .trim() || null;
+    const node = field as Record<string, unknown>;
+
+    // Leaf text node
+    if (typeof node.text === "string") return node.text;
+
+    // Recurse into ADF content arrays
+    if (Array.isArray(node.content)) {
+      const parts: string[] = [];
+      for (const child of node.content) {
+        const text = this.extractText(child);
+        if (text) parts.push(text);
+      }
+      return parts.length > 0 ? parts.join(" ") : null;
+    }
+
+    return null;
   }
 }
