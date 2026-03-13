@@ -127,6 +127,57 @@ describe("ComplexityAnalyzer", () => {
     expect(report.averageCognitiveComplexity).toBe(0);
   });
 
+  it("paginates through all components", async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            components: [
+              {
+                key: "my-project:src/a.ts",
+                path: "src/a.ts",
+                measures: [
+                  { metric: "complexity", value: "10" },
+                  { metric: "cognitive_complexity", value: "5" },
+                  { metric: "ncloc", value: "100" },
+                ],
+              },
+            ],
+            paging: { total: 2, pageIndex: 1, pageSize: 1 },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          components: [
+            {
+              key: "my-project:src/b.ts",
+              path: "src/b.ts",
+              measures: [
+                { metric: "complexity", value: "20" },
+                { metric: "cognitive_complexity", value: "18" },
+                { metric: "ncloc", value: "200" },
+              ],
+            },
+          ],
+          paging: { total: 2, pageIndex: 2, pageSize: 1 },
+        }),
+      });
+    });
+
+    const analyzer = new ComplexityAnalyzer(sonarConfig);
+    const report = await analyzer.analyze("42");
+
+    expect(report.files).toHaveLength(2);
+    expect(report.files[0].filePath).toBe("src/a.ts");
+    expect(report.files[1].filePath).toBe("src/b.ts");
+    expect(callCount).toBe(2);
+  });
+
   it("throws on API error", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
