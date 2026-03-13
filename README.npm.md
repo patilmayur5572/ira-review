@@ -55,17 +55,18 @@ npx ira-review review \
 
 ## Config file
 
-Create `.irarc.json` or `ira.config.json` in your project root:
+Create `.irarc.json` or `ira.config.json` in your project root for **non-secret settings only**:
 
 ```json
 {
   "sonarUrl": "https://sonarcloud.io",
-  "sonarToken": "sqa_xxxxx",
   "projectKey": "my-org_my-project",
   "scmProvider": "github",
   "minSeverity": "MAJOR"
 }
 ```
+
+**⚠️ Never put tokens or API keys in config files.** All secrets should come from environment variables or CI/CD secrets. IRA doesn't store your credentials — that's the whole point.
 
 CLI flags override config file values, which override environment variables.
 
