@@ -6,3 +6,5 @@ package-lock.json
 .env.*
 !.env.example
 coverage/
+.irarc.json
+ira.config.json

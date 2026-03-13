@@ -251,21 +251,20 @@ npx ira-review review \
 
 ## Config file
 
-Instead of passing flags every time, you can create a `.irarc.json` or `ira.config.json` in your project root:
+Instead of passing flags every time, you can create a `.irarc.json` or `ira.config.json` in your project root for **non-secret settings only**:
 
 ```json
 {
   "sonarUrl": "https://sonarcloud.io",
-  "sonarToken": "sqa_xxxxx",
   "projectKey": "my-org_my-project",
   "scmProvider": "github",
-  "githubToken": "ghp_xxxxx",
   "githubRepo": "owner/repo",
   "minSeverity": "MAJOR",
-  "slackWebhook": "https://hooks.slack.com/services/xxx/yyy/zzz",
   "dryRun": false
 }
 ```
+
+**⚠️ Never put tokens or API keys in config files.** IRA doesn't store your secrets — that's by design. All tokens (`sonarToken`, `githubToken`, `bitbucketToken`, `aiApiKey`, `jiraToken`) should come from environment variables or CI/CD secrets. The config file is for non-sensitive defaults like URLs, repo names, severity levels, and feature flags.
 
 **Priority order:** CLI flags > config file > environment variables. So you can set your defaults in the config file and override them with flags when needed.
 
