@@ -523,4 +523,4 @@ src/
 
 AGPL-3.0 - see [LICENSE](LICENSE) for details.
 
-For commercial licensing (use IRA in proprietary projects without AGPL obligations), contact [mayur@ira-review.dev](mailto:mayur@ira-review.dev).
+For commercial licensing (use IRA in proprietary projects without AGPL obligations), contact [patilmayur5572@gmail.com](mailto:patilmayur5572@gmail.com).

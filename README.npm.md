@@ -224,7 +224,7 @@ console.log(`Risk: ${result.risk?.level} (${result.risk?.score}/${result.risk?.m
 
 ## License
 
-AGPL-3.0 - see [LICENSE](LICENSE). For commercial licensing, contact [mayur@ira-review.dev](mailto:mayur@ira-review.dev).
+AGPL-3.0 - see [LICENSE](LICENSE). For commercial licensing, contact [patilmayur5572@gmail.com](mailto:patilmayur5572@gmail.com).
 
 ---
 
