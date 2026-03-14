@@ -1,14 +1,30 @@
+/**
+ * IRA — Intelligent Review Assistant
+ * Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
+ * Licensed under AGPL-3.0. See LICENSE file for details.
+ * Commercial license available — contact patilmayur5572@gmail.com
+ */
+
 import { Command } from "commander";
 import { ReviewEngine } from "./core/reviewEngine.js";
 import { resolveConfigFromEnv } from "./utils/env.js";
 import { loadConfigFile } from "./utils/configFile.js";
+
+const LICENSE_BANNER = `
+  ⚖️  IRA is licensed under AGPL-3.0.
+  📧 Commercial license: patilmayur5572@gmail.com
+  📖 https://github.com/patilmayur5572/ira-review
+`;
 
 const program = new Command();
 
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
-  .version("0.4.0");
+  .version("0.5.0")
+  .hook("preAction", () => {
+    console.log(LICENSE_BANNER);
+  });
 
 program
   .command("review")
