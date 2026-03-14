@@ -1,0 +1,37 @@
+IRA — Intelligent Review Assistant
+Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
+
+This software is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
+=== AGPL-3.0 OBLIGATIONS ===
+
+By using, modifying, or distributing this software, you agree to the following:
+
+1. SOURCE CODE DISCLOSURE
+   If you modify this software or use it as part of a network service,
+   you MUST make the complete source code of your modified version available
+   to all users under the AGPL-3.0 license.
+
+2. LICENSE PRESERVATION
+   You must retain all copyright notices, this NOTICE file, and the full
+   AGPL-3.0 license text in any copies or derivative works.
+
+3. NETWORK USE IS DISTRIBUTION
+   Under AGPL-3.0, providing this software as a network service (e.g., SaaS,
+   CI/CD pipeline service) counts as distribution. You must offer the source
+   code to all users who interact with the service.
+
+4. NO PROPRIETARY USE WITHOUT COMMERCIAL LICENSE
+   Using this software in proprietary/closed-source projects without releasing
+   your source code under AGPL-3.0 requires a commercial license.
+
+=== COMMERCIAL LICENSING ===
+
+For commercial licensing (use IRA in proprietary projects without AGPL obligations),
+contact: patilmayur5572@gmail.com
+
+=== THIRD-PARTY NOTICES ===
+
+This project uses the following open-source dependencies:
+- commander (MIT) — https://github.com/tj/commander.js
+- openai (Apache-2.0) — https://github.com/openai/openai-node

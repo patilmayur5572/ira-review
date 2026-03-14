@@ -1,6 +1,6 @@
 {
   "name": "ira-review",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "AI-powered PR reviews with built-in JIRA intelligence",
   "type": "module",
   "exports": {
@@ -16,9 +16,13 @@
     "ira-review": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts",
+    "NOTICE",
+    "LICENSE"
   ],
   "scripts": {
+    "postinstall": "node scripts/postinstall.js",
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
