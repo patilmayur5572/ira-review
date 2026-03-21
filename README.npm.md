@@ -1,18 +1,13 @@
-# ira-review
+# IRA — AI-Powered Code Reviews for Pull Requests
 
-**AI-powered PR reviews with optional SonarQube, JIRA, and Slack/Teams integration.**
+IRA reviews your pull requests using AI and posts inline comments with explanations, impact assessments, and suggested fixes.
 
-Point IRA (Intelligent Review Assistant) at a pull request and it posts inline comments with explanations, impact assessments, and suggested fixes. Works in two modes:
-
-- **AI-only** - reviews your PR diff directly, finds bugs, security issues, and performance problems
-- **Sonar + AI** - pulls SonarQube issues and enriches them with AI analysis
-
-Works with **any language** (Java, Python, Go, C#, TypeScript, and more). Supports **GitHub** and **Bitbucket** (Cloud & Server).
+**Works with any language.** Supports GitHub and Bitbucket.
 
 ## Try it now
 
 ```bash
-export IRA_AI_API_KEY=sk-xxxxx
+export IRA_AI_API_KEY=your-key-here
 
 npx ira-review review \
   --pr 42 \
@@ -22,52 +17,41 @@ npx ira-review review \
   --dry-run
 ```
 
-Drop `--dry-run` to post comments directly on the PR.
+Drop `--dry-run` to post comments on the PR.
 
 ## Install
 
 ```bash
-npx ira-review review --pr 42 --dry-run          # run once, no install
-npm install --save-dev ira-review                  # add to project
-npm install -g ira-review                          # install globally
+npx ira-review review --pr 42 --dry-run   # no install needed
+npm install -g ira-review                   # or install globally
+npm install --save-dev ira-review           # or add to your project
 ```
 
-## Quick start
+## Two review modes
 
-### AI-only review
+1. **AI-only** — finds bugs, security issues, and performance problems in your PR diff.
+2. **Sonar + AI** — pulls SonarQube issues and enriches them with AI explanations and fixes.
 
-```bash
-npx ira-review review \
-  --pr 42 \
-  --scm-provider github \
-  --github-token ghp_xxxxx \
-  --github-repo owner/repo
-```
+## AI providers
 
-### Sonar + AI review
+| Provider | Flag |
+|---|---|
+| **OpenAI** (default) | `--ai-provider openai` |
+| **Azure OpenAI** | `--ai-provider azure-openai` |
+| **Anthropic** | `--ai-provider anthropic` |
+| **Google Gemini** | `--ai-provider gemini` |
+| **Ollama** (local, no key) | `--ai-provider ollama` |
 
-```bash
-npx ira-review review \
-  --pr 42 \
-  --sonar-url https://sonarcloud.io \
-  --sonar-token sqa_xxxxx \
-  --project-key my-org_my-project \
-  --bitbucket-token bb_xxxxx \
-  --repo my-workspace/my-repo
-```
+## Key features
 
-### AI providers
+- **Inline PR comments** with explanation, impact, and suggested fix
+- **Risk scoring** (0–100) based on blockers, security, complexity, and more
+- **Framework detection** — tailors suggestions for React, Angular, Vue, NestJS
+- **Comment deduplication** — re-runs skip already-commented issues
+- **Optional integrations** — SonarQube, JIRA, Slack, Microsoft Teams
+- **CI-ready** — works with GitHub Actions, Bitbucket Pipelines, or any CI
 
-| Provider | Flag | Key required? |
-|---|---|---|
-| **OpenAI** (default) | `--ai-provider openai` | Yes |
-| **Azure OpenAI** | `--ai-provider azure-openai` | Yes + `--ai-base-url`, `--ai-deployment` |
-| **Anthropic** | `--ai-provider anthropic` | Yes |
-| **Ollama** (local) | `--ai-provider ollama` | No |
-
-Use `--ai-model-critical gpt-4o` to route BLOCKER/CRITICAL issues to a stronger model.
-
-## GitHub Actions
+## Quick GitHub Actions setup
 
 ```yaml
 name: AI Code Review
@@ -92,23 +76,12 @@ jobs:
           IRA_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-## What it does
-
-- **AI code review** - finds bugs, security issues, and performance problems in your PR diff
-- **Risk scoring** - calculates a 0-100 risk score from 5 factors (blockers, criticals, density, security, complexity)
-- **Framework detection** - auto-detects React, Angular, Vue, NestJS, Node and tailors suggestions
-- **Comment deduplication** - re-runs skip already-commented issues (tracked by file + line + rule)
-- **JIRA validation** - checks PR against JIRA acceptance criteria using AI
-- **Notifications** - sends summaries to Slack and/or Microsoft Teams
-- **Summary comment** - posts a formatted overview with risk score, issues, and complexity hotspots
-
 ## Config file
 
-Create `.irarc.json` or `ira.config.json` for non-sensitive defaults:
+Create `.irarc.json` in your project root:
 
 ```json
 {
-  "projectKey": "my-org_my-project",
   "scmProvider": "github",
   "githubRepo": "owner/repo",
   "aiModel": "gpt-4o-mini",
@@ -116,116 +89,23 @@ Create `.irarc.json` or `ira.config.json` for non-sensitive defaults:
 }
 ```
 
-**Priority:** CLI flags > env vars > config file. Tokens, keys, URLs, and webhooks are **blocked** from config files for security. Use `--no-config-file` in CI with untrusted PRs.
-
-## Environment variables
-
-| Variable | Description |
-|---|---|
-| `IRA_AI_API_KEY` | AI API key (**required**, except Ollama). Also accepts `OPENAI_API_KEY` |
-| `IRA_AI_BASE_URL` | AI base URL (Azure endpoint, Ollama URL) |
-| `IRA_AI_API_VERSION` | Azure OpenAI API version |
-| `IRA_AI_DEPLOYMENT_NAME` | Azure OpenAI deployment name |
-| `IRA_PR` | Pull request ID |
-| `IRA_SCM_PROVIDER` | `bitbucket` (default) or `github` |
-| `IRA_BITBUCKET_TOKEN` | Bitbucket API token |
-| `IRA_REPO` | Bitbucket `workspace/repo-slug` |
-| `IRA_GITHUB_TOKEN` | GitHub API token |
-| `IRA_GITHUB_REPO` | GitHub `owner/repo` |
-| `IRA_MIN_SEVERITY` | Minimum severity (default: `CRITICAL`) |
-| `IRA_SONAR_URL` | SonarQube URL *(optional)* |
-| `IRA_SONAR_TOKEN` | Sonar API token *(optional)* |
-| `IRA_PROJECT_KEY` | Sonar project key *(optional)* |
-| `IRA_JIRA_URL` | JIRA base URL *(optional)* |
-| `IRA_JIRA_EMAIL` | JIRA email *(optional)* |
-| `IRA_JIRA_TOKEN` | JIRA API token *(optional)* |
-| `IRA_JIRA_TICKET` | JIRA ticket key *(optional)* |
-| `IRA_SLACK_WEBHOOK` | Slack webhook *(optional)* |
-| `IRA_TEAMS_WEBHOOK` | Teams webhook *(optional)* |
-
-## CLI reference
-
-```
-ira-review review [options]
-
-Required:
-  --pr <id>                    Pull request ID
-
-SCM:
-  --scm-provider <provider>    bitbucket (default) or github
-  --bitbucket-token <token>    Bitbucket API token
-  --repo <repo>                Bitbucket workspace/repo-slug
-  --github-token <token>       GitHub API token
-  --github-repo <repo>         GitHub owner/repo
-
-AI:
-  --ai-provider <provider>     openai (default), azure-openai, anthropic, ollama
-  --ai-model <model>           AI model (default: gpt-4o-mini)
-  --ai-model-critical <model>  Stronger model for BLOCKER/CRITICAL issues
-  --ai-base-url <url>          AI provider base URL
-  --ai-api-version <version>   Azure OpenAI API version
-  --ai-deployment <name>       Azure OpenAI deployment name
-
-SonarQube (optional):
-  --sonar-url <url>            SonarQube/SonarCloud base URL
-  --sonar-token <token>        Sonar API token
-  --project-key <key>          Sonar project key
-
-Review:
-  --min-severity <level>       BLOCKER, CRITICAL (default), MAJOR, MINOR, INFO
-  --dry-run                    Print to terminal instead of posting
-
-JIRA (optional):
-  --jira-url <url>             JIRA base URL
-  --jira-email <email>         JIRA account email
-  --jira-token <token>         JIRA API token
-  --jira-ticket <key>          JIRA ticket key
-  --jira-ac-field <field>      Custom field for acceptance criteria
-
-Notifications (optional):
-  --slack-webhook <url>        Slack webhook URL
-  --teams-webhook <url>        Teams webhook URL
-
-Config:
-  --config <path>              Path to config file
-  --no-config-file             Disable auto-loading config from repo
-```
-
-## Programmatic usage
-
-```typescript
-import { ReviewEngine } from "ira-review";
-
-const engine = new ReviewEngine({
-  scmProvider: "github",
-  scm: { token: process.env.GITHUB_TOKEN!, owner: "my-org", repo: "my-repo" },
-  ai: { provider: "openai", apiKey: process.env.IRA_AI_API_KEY! },
-  pullRequestId: "42",
-  dryRun: true,
-});
-
-const result = await engine.run();
-console.log(`Risk: ${result.risk?.level} (${result.risk?.score}/${result.risk?.maxScore})`);
-```
+CLI flags > env vars > config file. Tokens and keys are blocked from config files for security.
 
 ## Security
 
-- Runs on your servers - tokens never leave your infrastructure
+- Runs in your CI — tokens never leave your infrastructure
 - No telemetry, analytics, or tracking
-- Config files block sensitive fields automatically
-- Prompt injection protection on all untrusted content
-- Open source - every line auditable
+- Open source — every line is auditable
 
 ## Requirements
 
 - Node.js 18+
-- AI provider API key (OpenAI, Azure OpenAI, Anthropic) or Ollama
-- GitHub or Bitbucket repo with an open pull request
+- An AI provider API key (or Ollama running locally)
 
 ## License
 
-AGPL-3.0 - see [LICENSE](LICENSE). For commercial licensing, contact [patilmayur5572@gmail.com](mailto:patilmayur5572@gmail.com).
+[AGPL-3.0](LICENSE) — For commercial licensing, contact [patilmayur5572@gmail.com](mailto:patilmayur5572@gmail.com).
 
 ---
 
-📖 **Full docs, architecture diagrams, and examples:** [github.com/patilmayur5572/ira-review](https://github.com/patilmayur5572/ira-review)
+📖 **Full docs & examples:** [github.com/patilmayur5572/ira-review](https://github.com/patilmayur5572/ira-review)
