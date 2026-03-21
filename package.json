@@ -1,6 +1,6 @@
 {
   "name": "ira-review",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "AI-powered PR reviews with built-in JIRA intelligence",
   "type": "module",
   "exports": {
