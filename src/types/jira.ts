@@ -28,3 +28,41 @@ export interface AcceptanceValidationResult {
   criteria: AcceptanceCriterion[];
   overallPass: boolean;
 }
+
+export type TestFramework = "jest" | "vitest" | "mocha" | "playwright" | "cypress" | "gherkin" | "pytest" | "junit";
+
+export interface GeneratedTestCase {
+  description: string;
+  type: "happy-path" | "edge-case" | "negative";
+  criterion: string;
+  code: string;
+}
+
+export interface TestGenerationResult {
+  jiraKey: string;
+  summary: string;
+  testFramework: TestFramework;
+  testCases: GeneratedTestCase[];
+  totalCases: number;
+  edgeCases: number;
+  parseWarning?: string;
+}
+
+export interface RequirementStatus {
+  description: string;
+  met: boolean;
+  evidence: string;
+  coverage: "full" | "partial" | "missing";
+}
+
+export interface RequirementCompletionResult {
+  jiraKey: string;
+  summary: string;
+  completionPercentage: number;
+  totalCriteria: number;
+  metCriteria: number;
+  requirements: RequirementStatus[];
+  edgeCases: string[];
+  overallPass: boolean;
+  parseWarning?: string;
+}

@@ -13,6 +13,8 @@ const mockResult: ReviewResult = {
   risk: { level: "HIGH", score: 45, maxScore: 100, factors: [], summary: "" },
   complexity: null,
   acceptanceValidation: null,
+testGeneration: null,
+requirementCompletion: null,
 };
 
 describe("Notifier", () => {
