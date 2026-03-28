@@ -2,7 +2,7 @@
 
 IRA (Intelligent Review Assistant) reviews your pull requests using AI. It posts inline comments with explanations, impact assessments, and suggested fixes — directly on your PR.
 
-**Works with any language.** Supports GitHub and Bitbucket (Cloud & Server).
+**Works with any language.** Supports GitHub and Bitbucket Cloud.
 
 ## Two review modes
 
@@ -63,7 +63,6 @@ npx ira-review review \
 | **OpenAI** (default) | `--ai-provider openai` | Set `IRA_AI_API_KEY` |
 | **Azure OpenAI** | `--ai-provider azure-openai` | Also needs `--ai-base-url` and `--ai-deployment` |
 | **Anthropic** | `--ai-provider anthropic` | Set `IRA_AI_API_KEY` |
-| **Google Gemini** | `--ai-provider gemini` | Set `IRA_AI_API_KEY` |
 | **Ollama** (local) | `--ai-provider ollama` | No API key needed |
 
 > **Tip:** Use `--ai-model-critical gpt-4o` to send high-severity issues to a stronger model while keeping costs low.
@@ -115,12 +114,85 @@ pipelines:
 
 > **Note:** Use `--no-config-file` in CI pipelines that run on untrusted PRs (forks, external contributors).
 
+## JIRA integration
+
+### Requirement completion tracking
+
+When you connect a JIRA ticket, IRA tells you exactly how much of the AC is implemented — with percentage, per-criterion status, and edge cases the developer may have missed:
+
+```bash
+npx ira-review review \
+  --pr 87 \
+  --scm-provider github \
+  --github-repo owner/repo \
+  --jira-url https://yourcompany.atlassian.net \
+  --jira-ticket AUTH-234 \
+  --dry-run
+```
+
+Example output on the PR:
+
+```
+📊 Requirements: AUTH-234 — 67% Complete (4/6 AC met)
+
+  ✅ OAuth2 login flow implemented with Google provider
+  ✅ JWT tokens generated on successful authentication
+  ✅ Refresh token rotation with 7-day expiry
+  ❌ Input validation on login endpoint — no email format check
+  ✅ Logout endpoint clears session and revokes token
+  ❌ Rate limiting on login attempts — not implemented
+
+  ⚠️ Edge Cases Not Covered:
+     - What happens when Google OAuth is unreachable?
+     - Token refresh during concurrent requests?
+```
+
+### AI test case generation
+
+Generate test cases directly from JIRA acceptance criteria — including happy paths, edge cases, and negative scenarios:
+
+```bash
+# Standalone: generate tests from JIRA (no PR needed)
+npx ira-review generate-tests \
+  --jira-ticket AUTH-234 \
+  --test-framework jest
+
+# With code context (higher precision — uses actual function names and routes)
+npx ira-review generate-tests \
+  --jira-ticket AUTH-234 \
+  --test-framework playwright \
+  --pr 87 \
+  --scm-provider github \
+  --github-repo owner/repo
+
+# Save to file
+npx ira-review generate-tests \
+  --jira-ticket AUTH-234 \
+  --test-framework vitest \
+  --output tests/auth.test.ts
+```
+
+Supported test frameworks:
+
+| Framework | Language | Style |
+|---|---|---|
+| `jest` | JavaScript/TypeScript | `describe` / `it` / `expect` |
+| `vitest` | JavaScript/TypeScript | `describe` / `it` / `expect` |
+| `mocha` | JavaScript/TypeScript | `describe` / `it` + Chai |
+| `playwright` | TypeScript | `test` / `page` / E2E |
+| `cypress` | JavaScript | `cy.visit` / `cy.get` / E2E |
+| `gherkin` | Any (BDD) | `Given` / `When` / `Then` |
+| `pytest` | Python | `def test_` / `assert` |
+| `junit` | Java/Kotlin | `@Test` / `assertEquals` |
+
+> You can also add `--generate-tests` to any `review` command to include test generation alongside the code review.
+
 ## Optional integrations
 
 | Integration | What it does | Key flags |
 |---|---|---|
 | **SonarQube** | Enriches Sonar issues with AI analysis | `--sonar-url`, `--sonar-token`, `--project-key` |
-| **JIRA** | Validates PR against acceptance criteria | `--jira-url`, `--jira-email`, `--jira-token`, `--jira-ticket` |
+| **JIRA** | Requirement tracking + test generation | `--jira-url`, `--jira-email`, `--jira-token`, `--jira-ticket` |
 | **Slack** | Sends review summary to a channel | `--slack-webhook` |
 | **Teams** | Sends review summary to a channel | `--teams-webhook` |
 
@@ -143,6 +215,21 @@ CLI flags override env vars, which override the config file. Tokens and keys are
 
 - **Inline comments** on the exact lines with explanation, impact, and suggested fix.
 - **Summary comment** with a risk score (0–100), issue breakdown, and complexity hotspots.
+
+## PR risk labels
+
+IRA automatically labels your PRs with risk level after each review (GitHub only):
+
+| Label | Score | Color |
+|---|---|---|
+| `ira:critical` | 60–100 | 🔴 Red |
+| `ira:high` | 40–59 | 🟠 Orange |
+| `ira:medium` | 20–39 | 🟡 Yellow |
+| `ira:low` | 0–19 | 🟢 Green |
+
+Labels update automatically when risk changes. Filter your PR list with `label:ira:critical label:ira:high` to prioritize reviews.
+
+> Bitbucket does not support PR labels natively — risk level is shown in the summary comment instead.
 
 ## Security
 

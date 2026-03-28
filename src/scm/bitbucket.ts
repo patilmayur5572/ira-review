@@ -178,6 +178,15 @@ export class BitbucketClient implements SCMProvider {
     return promise;
   }
 
+  async applyRiskLabel(
+    _pullRequestId: string,
+    _riskLevel: string,
+    _riskScore: number,
+  ): Promise<void> {
+    // Bitbucket Cloud does not support PR labels natively.
+    // Risk level is included in the review summary comment instead.
+  }
+
   private formatComment(comment: ReviewComment): string {
     const { aiReview } = comment;
     const location =

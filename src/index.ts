@@ -12,6 +12,8 @@ export { filterIssues, groupIssuesByFile } from "./core/issueProcessor.js";
 export { calculateRisk } from "./core/riskScorer.js";
 export { ComplexityAnalyzer } from "./core/complexityAnalyzer.js";
 export { validateAcceptanceCriteria } from "./core/acceptanceValidator.js";
+export { generateTestCases } from "./core/testGenerator.js";
+export { trackRequirementCompletion } from "./core/requirementTracker.js";
 export { buildSummary } from "./core/summaryBuilder.js";
 
 // AI
@@ -51,6 +53,6 @@ export type {
 } from "./types/review.js";
 export type { AIFoundIssue } from "./ai/promptBuilder.js";
 export type { RiskReport, RiskFactor, RiskLevel, ComplexityReport, ComplexityMetric } from "./types/risk.js";
-export type { JiraIssue, AcceptanceValidationResult, AcceptanceCriterion } from "./types/jira.js";
+export type { JiraIssue, AcceptanceValidationResult, AcceptanceCriterion, TestFramework, GeneratedTestCase, TestGenerationResult, RequirementStatus, RequirementCompletionResult } from "./types/jira.js";
 export type { RetryOptions } from "./utils/retry.js";
 export type { FlatConfig } from "./utils/env.js";

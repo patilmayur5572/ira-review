@@ -51,6 +51,8 @@ const baseResult: ReviewResult = {
     ],
   },
   acceptanceValidation: null,
+    testGeneration: null,
+    requirementCompletion: null,
 };
 
 describe("buildSummary", () => {

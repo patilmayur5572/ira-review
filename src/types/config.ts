@@ -1,3 +1,5 @@
+import type { TestFramework } from "./jira.js";
+
 export interface SonarConfig {
   baseUrl: string;
   token: string;
@@ -51,6 +53,8 @@ export interface IraConfig {
   jira?: JiraConfig;
   jiraTicket?: string;
   notifications?: NotificationConfig;
+  generateTests?: boolean;
+  testFramework?: TestFramework;
 }
 
 export interface NotificationConfig {

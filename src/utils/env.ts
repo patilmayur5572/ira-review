@@ -75,6 +75,8 @@ export function resolveConfigFromEnv(
     ...(jiraConfig && { jira: jiraConfig }),
     ...(jiraTicket && { jiraTicket }),
     ...(notificationsConfig && { notifications: notificationsConfig }),
+    ...(overrides.generateTests && { generateTests: overrides.generateTests }),
+    ...(overrides.testFramework && { testFramework: overrides.testFramework as IraConfig["testFramework"] }),
   };
 }
 
@@ -214,6 +216,8 @@ export interface FlatConfig {
   jiraAcField?: string;
   slackWebhook?: string;
   teamsWebhook?: string;
+  generateTests?: boolean;
+  testFramework?: string;
 }
 
 function env(key: string): string {

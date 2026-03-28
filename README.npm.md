@@ -39,17 +39,41 @@ npm install --save-dev ira-review           # or add to your project
 | **OpenAI** (default) | `--ai-provider openai` |
 | **Azure OpenAI** | `--ai-provider azure-openai` |
 | **Anthropic** | `--ai-provider anthropic` |
-| **Google Gemini** | `--ai-provider gemini` |
 | **Ollama** (local, no key) | `--ai-provider ollama` |
 
 ## Key features
 
 - **Inline PR comments** with explanation, impact, and suggested fix
 - **Risk scoring** (0–100) based on blockers, security, complexity, and more
+- **Risk labels** — auto-applies `ira:critical` / `ira:high` / `ira:medium` / `ira:low` labels on GitHub PRs
+- **Requirement tracking** — shows % completion of JIRA acceptance criteria per PR
+- **Test case generation** — generates tests from JIRA AC in 8 frameworks: Jest, Vitest, Mocha, Playwright, Cypress, Gherkin, Pytest, JUnit
 - **Framework detection** — tailors suggestions for React, Angular, Vue, NestJS
 - **Comment deduplication** — re-runs skip already-commented issues
 - **Optional integrations** — SonarQube, JIRA, Slack, Microsoft Teams
 - **CI-ready** — works with GitHub Actions, Bitbucket Pipelines, or any CI
+
+## JIRA: requirement tracking + test generation
+
+```bash
+# Review PR with requirement completion tracking
+npx ira-review review \
+  --pr 87 --jira-ticket AUTH-234 \
+  --scm-provider github --github-repo owner/repo --dry-run
+
+# Generate test cases from JIRA acceptance criteria
+npx ira-review generate-tests \
+  --jira-ticket AUTH-234 \
+  --test-framework jest
+
+# With code context for higher precision
+npx ira-review generate-tests \
+  --jira-ticket AUTH-234 \
+  --test-framework playwright \
+  --pr 87 --scm-provider github --github-repo owner/repo
+```
+
+IRA outputs per-criterion pass/fail with % completion, edge case warnings, and ready-to-use test scaffolding.
 
 ## Quick GitHub Actions setup
 
