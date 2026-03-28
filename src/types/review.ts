@@ -1,6 +1,6 @@
 import type { SonarIssue } from "./sonar.js";
 import type { RiskReport, ComplexityReport } from "./risk.js";
-import type { AcceptanceValidationResult } from "./jira.js";
+import type { AcceptanceValidationResult, TestGenerationResult, RequirementCompletionResult } from "./jira.js";
 
 export type Framework = "react" | "angular" | "vue" | "nestjs" | "node";
 
@@ -37,6 +37,8 @@ export interface ReviewResult {
   risk: RiskReport | null;
   complexity: ComplexityReport | null;
   acceptanceValidation: AcceptanceValidationResult | null;
+  testGeneration?: TestGenerationResult | null;
+  requirementCompletion?: RequirementCompletionResult | null;
   warnings?: string[];
 }
 
@@ -49,4 +51,5 @@ export interface SCMProvider {
   postSummary(summary: string, pullRequestId: string): Promise<void>;
   getDiff(pullRequestId: string): Promise<string>;
   getFileContent(filePath: string, pullRequestId: string): Promise<string>;
+  applyRiskLabel?(pullRequestId: string, riskLevel: string, riskScore: number): Promise<void>;
 }

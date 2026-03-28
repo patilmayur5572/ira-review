@@ -197,6 +197,90 @@ export class GitHubClient implements SCMProvider {
     return promise;
   }
 
+  async applyRiskLabel(
+    pullRequestId: string,
+    riskLevel: string,
+    riskScore: number,
+  ): Promise<void> {
+    const colorMap: Record<string, string> = {
+      CRITICAL: "b60205",
+      HIGH: "d93f0b",
+      MEDIUM: "fbca04",
+      LOW: "0e8a16",
+    };
+
+    const labelName = `ira:${riskLevel.toLowerCase()}`;
+    const color = colorMap[riskLevel] ?? "c5def5";
+    const description = `IRA-assessed ${riskLevel.toLowerCase()} risk`;
+
+    // Ensure label exists in the repo
+    try {
+      await withRetry(async () => {
+        const response = await fetchWithTimeout(
+          `${this.baseUrl}/repos/${this.owner}/${this.repo}/labels`,
+          {
+            method: "POST",
+            headers: this.headers,
+            body: JSON.stringify({ name: labelName, color, description }),
+          },
+        );
+
+        // 422 = label already exists, which is fine
+        if (!response.ok && response.status !== 422) {
+          const text = await response.text();
+          throw new RetryableError(
+            `GitHub API error (${response.status}): ${text}`,
+            response.status,
+          );
+        }
+      });
+    } catch {
+      // Soft fail — label creation might fail due to permissions
+    }
+
+    // Remove stale ira:* labels from PR
+    try {
+      const labelsResponse = await fetchWithTimeout(
+        `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/labels`,
+        { headers: this.headers },
+      );
+
+      if (labelsResponse.ok) {
+        const labels = (await labelsResponse.json()) as Array<{ name: string }>;
+        for (const label of labels) {
+          if (label.name.startsWith("ira:") && label.name !== labelName) {
+            await fetchWithTimeout(
+              `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/labels/${encodeURIComponent(label.name)}`,
+              { method: "DELETE", headers: this.headers },
+            );
+          }
+        }
+      }
+    } catch {
+      // Soft fail — stale label removal is best-effort
+    }
+
+    // Apply the new label
+    await withRetry(async () => {
+      const response = await fetchWithTimeout(
+        `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/labels`,
+        {
+          method: "POST",
+          headers: this.headers,
+          body: JSON.stringify({ labels: [labelName] }),
+        },
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          `GitHub API error (${response.status}): ${text}`,
+          response.status,
+        );
+      }
+    });
+  }
+
   private formatComment(comment: ReviewComment): string {
     const { aiReview } = comment;
     const location =
