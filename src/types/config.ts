@@ -1,3 +1,5 @@
+import type { TestFramework } from "./jira.js";
+
 export interface SonarConfig {
   baseUrl: string;
   token: string;
@@ -51,9 +53,15 @@ export interface IraConfig {
   jira?: JiraConfig;
   jiraTicket?: string;
   notifications?: NotificationConfig;
+  generateTests?: boolean;
+  testFramework?: TestFramework;
 }
+
+export type RiskLevelThreshold = "low" | "medium" | "high" | "critical";
 
 export interface NotificationConfig {
   slackWebhookUrl?: string;
   teamsWebhookUrl?: string;
+  minRiskLevel?: RiskLevelThreshold;
+  notifyOnAcFail?: boolean;
 }
