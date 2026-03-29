@@ -292,7 +292,7 @@ export class GitHubClient implements SCMProvider {
 
     return [
       marker,
-      `🔍 **IRA Review** — \`${comment.rule}\` (${comment.severity})`,
+      `🔍 **IRA Review** - \`${comment.rule}\` (${comment.severity})`,
       location,
       `> ${comment.message}`,
       "",
