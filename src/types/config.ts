@@ -57,7 +57,11 @@ export interface IraConfig {
   testFramework?: TestFramework;
 }
 
+export type RiskLevelThreshold = "low" | "medium" | "high" | "critical";
+
 export interface NotificationConfig {
   slackWebhookUrl?: string;
   teamsWebhookUrl?: string;
+  minRiskLevel?: RiskLevelThreshold;
+  notifyOnAcFail?: boolean;
 }

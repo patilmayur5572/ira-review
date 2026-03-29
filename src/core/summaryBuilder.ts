@@ -21,12 +21,16 @@ export function buildSummary(result: ReviewResult): string {
       `## ${emoji} Risk: ${result.risk.level} (${result.risk.score}/${result.risk.maxScore})`,
     );
     lines.push("");
-    lines.push("| Factor | Score | Detail |");
-    lines.push("|---|---|---|");
-    for (const f of result.risk.factors) {
-      lines.push(`| ${f.name} | ${f.score}/${f.maxScore} | ${f.detail} |`);
+
+    // Only show detailed factor table in Sonar mode — factors are Sonar-driven
+    if (result.reviewMode === "sonar") {
+      lines.push("| Factor | Score | Detail |");
+      lines.push("|---|---|---|");
+      for (const f of result.risk.factors) {
+        lines.push(`| ${f.name} | ${f.score}/${f.maxScore} | ${f.detail} |`);
+      }
+      lines.push("");
     }
-    lines.push("");
   }
 
   // Overview
