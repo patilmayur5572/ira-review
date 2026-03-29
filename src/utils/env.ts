@@ -75,6 +75,8 @@ export function resolveConfigFromEnv(
     ...(jiraConfig && { jira: jiraConfig }),
     ...(jiraTicket && { jiraTicket }),
     ...(notificationsConfig && { notifications: notificationsConfig }),
+    ...(overrides.generateTests && { generateTests: overrides.generateTests }),
+    ...(overrides.testFramework && { testFramework: overrides.testFramework as IraConfig["testFramework"] }),
   };
 }
 
@@ -153,6 +155,8 @@ function resolveGitHubScmConfig(
   };
 }
 
+const VALID_RISK_THRESHOLDS = ["low", "medium", "high", "critical"] as const;
+
 function resolveNotificationsConfig(
   overrides: Partial<FlatConfig>,
 ): IraConfig["notifications"] | undefined {
@@ -161,9 +165,18 @@ function resolveNotificationsConfig(
 
   if (!slackUrl && !teamsUrl) return undefined;
 
+  const minRisk = overrides.notifyMinRisk ?? optionalEnv("IRA_NOTIFY_MIN_RISK");
+  if (minRisk && !VALID_RISK_THRESHOLDS.includes(minRisk as typeof VALID_RISK_THRESHOLDS[number])) {
+    throw new Error(`Invalid notify-min-risk: "${minRisk}". Must be one of: ${VALID_RISK_THRESHOLDS.join(", ")}`);
+  }
+
+  const notifyOnAcFail = overrides.notifyOnAcFail ?? optionalEnv("IRA_NOTIFY_ON_AC_FAIL") === "true";
+
   return {
     ...(slackUrl && { slackWebhookUrl: slackUrl }),
     ...(teamsUrl && { teamsWebhookUrl: teamsUrl }),
+    ...(minRisk && { minRiskLevel: minRisk as IraConfig["notifications"] extends { minRiskLevel?: infer T } ? T : never }),
+    ...(notifyOnAcFail && { notifyOnAcFail }),
   };
 }
 
@@ -214,6 +227,10 @@ export interface FlatConfig {
   jiraAcField?: string;
   slackWebhook?: string;
   teamsWebhook?: string;
+  notifyMinRisk?: string;
+  notifyOnAcFail?: boolean;
+  generateTests?: boolean;
+  testFramework?: string;
 }
 
 function env(key: string): string {
