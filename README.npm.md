@@ -1,4 +1,4 @@
-# IRA — AI-Powered Code Reviews for Pull Requests
+# IRA - AI-Powered Code Reviews for Pull Requests
 
 IRA reviews your pull requests using AI and posts inline comments with explanations, impact assessments, and suggested fixes.
 
