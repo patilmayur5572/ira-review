@@ -178,6 +178,41 @@ export class BitbucketClient implements SCMProvider {
     return promise;
   }
 
+  async applyRiskLabel(
+    pullRequestId: string,
+    riskLevel: string,
+    riskScore: number,
+  ): Promise<void> {
+    const sha = await this.getSourceHash(pullRequestId);
+    const state = riskLevel === "CRITICAL" || riskLevel === "HIGH" ? "FAILED"
+      : riskLevel === "MEDIUM" ? "INPROGRESS"
+      : "SUCCESSFUL";
+
+    const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/commit/${sha}/statuses/build`;
+
+    await withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify({
+          key: "ira-risk",
+          state,
+          name: `IRA Risk: ${riskLevel} (${riskScore}/100)`,
+          description: `IRA assessed this PR as ${riskLevel.toLowerCase()} risk`,
+          url: `https://github.com/patilmayur5572/ira-review`,
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          `Bitbucket API error (${response.status}): ${text}`,
+          response.status,
+        );
+      }
+    });
+  }
+
   private formatComment(comment: ReviewComment): string {
     const { aiReview } = comment;
     const location =
@@ -189,7 +224,7 @@ export class BitbucketClient implements SCMProvider {
 
     return [
       marker,
-      `🔍 **IRA Review** — \`${comment.rule}\` (${comment.severity})`,
+      `🔍 **IRA Review** - \`${comment.rule}\` (${comment.severity})`,
       location,
       `> ${comment.message}`,
       "",

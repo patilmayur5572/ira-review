@@ -21,12 +21,16 @@ export function buildSummary(result: ReviewResult): string {
       `## ${emoji} Risk: ${result.risk.level} (${result.risk.score}/${result.risk.maxScore})`,
     );
     lines.push("");
-    lines.push("| Factor | Score | Detail |");
-    lines.push("|---|---|---|");
-    for (const f of result.risk.factors) {
-      lines.push(`| ${f.name} | ${f.score}/${f.maxScore} | ${f.detail} |`);
+
+    // Only show detailed factor table in Sonar mode — factors are Sonar-driven
+    if (result.reviewMode === "sonar") {
+      lines.push("| Factor | Score | Detail |");
+      lines.push("|---|---|---|");
+      for (const f of result.risk.factors) {
+        lines.push(`| ${f.name} | ${f.score}/${f.maxScore} | ${f.detail} |`);
+      }
+      lines.push("");
     }
-    lines.push("");
   }
 
   // Overview
@@ -54,8 +58,33 @@ export function buildSummary(result: ReviewResult): string {
     lines.push("");
   }
 
-  // Acceptance criteria
-  if (result.acceptanceValidation) {
+  // Requirement completion
+  if (result.requirementCompletion) {
+    const rc = result.requirementCompletion;
+    const pctIcon = rc.completionPercentage === 100 ? "✅" : rc.completionPercentage >= 50 ? "🟡" : "🔴";
+    lines.push(`## ${pctIcon} Requirements: ${rc.jiraKey} - ${rc.completionPercentage}% Complete (${rc.metCriteria}/${rc.totalCriteria})`);
+    lines.push("");
+    for (const r of rc.requirements) {
+      const icon = r.coverage === "full" ? "✅" : r.coverage === "partial" ? "🟡" : "❌";
+      lines.push(`- ${icon} ${r.description}`);
+      if (r.coverage !== "full") {
+        lines.push(`  > ${r.evidence}`);
+      }
+    }
+    if (rc.edgeCases.length > 0) {
+      lines.push("");
+      lines.push("### ⚠️ Edge Cases Not Covered");
+      for (const e of rc.edgeCases) {
+        lines.push(`- ${e}`);
+      }
+    }
+    if (rc.parseWarning) {
+      lines.push("");
+      lines.push(`> ⚠️ **Warning:** ${rc.parseWarning}`);
+    }
+    lines.push("");
+  } else if (result.acceptanceValidation) {
+    // Fallback to simple AC validation if requirement tracking not available
     const av = result.acceptanceValidation;
     const icon = av.overallPass ? "✅" : "❌";
     lines.push(`## ${icon} JIRA: ${av.jiraKey} - ${av.summary}`);
@@ -63,6 +92,31 @@ export function buildSummary(result: ReviewResult): string {
     for (const c of av.criteria) {
       lines.push(`- ${c.met ? "✅" : "❌"} ${c.description}`);
     }
+    lines.push("");
+  }
+
+  // Generated test cases
+  if (result.testGeneration && result.testGeneration.testCases.length > 0) {
+    const tg = result.testGeneration;
+    lines.push(`## 🧪 Generated Test Cases (${tg.totalCases} tests, ${tg.edgeCases} edge cases)`);
+    lines.push("");
+    const byCriterion = new Map<string, typeof tg.testCases>();
+    for (const tc of tg.testCases) {
+      const existing = byCriterion.get(tc.criterion) ?? [];
+      existing.push(tc);
+      byCriterion.set(tc.criterion, existing);
+    }
+    for (const [criterion, cases] of byCriterion) {
+      lines.push(`### ${criterion}`);
+      for (const tc of cases) {
+        const typeIcon = tc.type === "happy-path" ? "✅" : tc.type === "edge-case" ? "⚠️" : "🚫";
+        lines.push(`- ${typeIcon} ${tc.description} *(${tc.type})*`);
+      }
+      lines.push("");
+    }
+  }
+  if (result.testGeneration?.parseWarning) {
+    lines.push(`> ⚠️ **Warning:** ${result.testGeneration.parseWarning}`);
     lines.push("");
   }
 

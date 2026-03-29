@@ -2,7 +2,7 @@ import type { IraConfig, BitbucketConfig, GitHubConfig } from "../types/config.j
 import type { ReviewComment, ReviewResult, SCMProvider } from "../types/review.js";
 import type { SonarIssue } from "../types/sonar.js";
 import type { ComplexityReport } from "../types/risk.js";
-import type { AcceptanceValidationResult } from "../types/jira.js";
+import type { AcceptanceValidationResult, TestGenerationResult, RequirementCompletionResult } from "../types/jira.js";
 import { SonarClient } from "./sonarClient.js";
 import { filterIssues, groupIssuesByFile } from "./issueProcessor.js";
 import { detectFramework } from "../frameworks/detector.js";
@@ -17,6 +17,8 @@ import { calculateRisk } from "./riskScorer.js";
 import { ComplexityAnalyzer } from "./complexityAnalyzer.js";
 import { JiraClient } from "../integrations/jiraClient.js";
 import { validateAcceptanceCriteria } from "./acceptanceValidator.js";
+import { generateTestCases } from "./testGenerator.js";
+import { trackRequirementCompletion } from "./requirementTracker.js";
 import { buildSummary } from "./summaryBuilder.js";
 import { Notifier } from "../integrations/notifier.js";
 
@@ -84,9 +86,10 @@ export class ReviewEngine {
 
     // Standalone mode requires diff context — fail fast if empty
     if (!this.config.sonar && diffByFile.size === 0) {
+      const hint = warnings.length > 0 ? `\nCause: ${warnings[warnings.length - 1]}` : "";
       throw new Error(
         "Standalone AI review requires PR diff context, but no diff could be fetched. " +
-        "Ensure SCM credentials and repo are configured correctly.",
+        "Ensure SCM credentials and repo are configured correctly." + hint,
       );
     }
 
@@ -238,6 +241,8 @@ export class ReviewEngine {
 
     // 9. JIRA acceptance criteria validation (soft fail)
     let acceptanceValidation: AcceptanceValidationResult | null = null;
+    let testGeneration: TestGenerationResult | null = null;
+    let requirementCompletion: RequirementCompletionResult | null = null;
     if (this.config.jira && this.config.jiraTicket) {
       try {
         const jiraClient = new JiraClient(this.config.jira);
@@ -248,6 +253,34 @@ export class ReviewEngine {
           framework,
           aiProvider,
         );
+
+        // 9a. Requirement completion tracking
+        const fullDiff = [...diffByFile.values()].join("\n");
+        requirementCompletion = await trackRequirementCompletion(
+          jiraIssue,
+          aiProvider,
+          framework,
+          fullDiff || null,
+          sourceByFile.size > 0 ? sourceByFile : null,
+        );
+        if (requirementCompletion.parseWarning) {
+          warnings.push(requirementCompletion.parseWarning);
+        }
+
+        // 9b. Test case generation (if requested)
+        if (this.config.generateTests) {
+          testGeneration = await generateTestCases(
+            jiraIssue,
+            this.config.testFramework ?? "jest",
+            aiProvider,
+            framework,
+            fullDiff || null,
+            sourceByFile.size > 0 ? sourceByFile : null,
+          );
+          if (testGeneration.parseWarning) {
+            warnings.push(testGeneration.parseWarning);
+          }
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Unknown error";
         warnings.push(`JIRA validation failed: ${msg}`);
@@ -278,6 +311,8 @@ export class ReviewEngine {
       risk,
       complexity,
       acceptanceValidation,
+      testGeneration,
+      requirementCompletion,
       warnings,
     };
 
@@ -309,16 +344,37 @@ export class ReviewEngine {
         }
       }
       result.commentsPosted = postedCount;
+
+      // 11a. Apply risk label to PR (soft fail)
+      if (risk && scmClient.applyRiskLabel) {
+        try {
+          await scmClient.applyRiskLabel(pullRequestId, risk.level, risk.score);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          warnings.push(`Risk label failed: ${msg}`);
+        }
+      }
     }
 
-    // 12. Send notifications (soft fail)
+    // 12. Send notifications (soft fail, respects minRiskLevel and notifyOnAcFail)
     if (this.config.notifications) {
-      try {
-        const notifier = new Notifier(this.config.notifications);
-        await notifier.notify(result);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Unknown error";
-        warnings.push(`Notification delivery failed: ${msg}`);
+      const riskTriggered = meetsRiskThreshold(
+        result.risk?.level ?? "LOW",
+        this.config.notifications.minRiskLevel,
+      );
+      const acFailed = this.config.notifications.notifyOnAcFail
+        && (result.requirementCompletion?.overallPass === false
+          || result.acceptanceValidation?.overallPass === false);
+      const shouldNotify = riskTriggered || acFailed;
+
+      if (shouldNotify) {
+        try {
+          const notifier = new Notifier(this.config.notifications);
+          await notifier.notify(result);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          warnings.push(`Notification delivery failed: ${msg}`);
+        }
       }
     }
 
@@ -343,6 +399,18 @@ export class ReviewEngine {
   }
 }
 
+const RISK_ORDER: Record<string, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+
+function meetsRiskThreshold(
+  currentLevel: string,
+  minLevel?: string,
+): boolean {
+  if (!minLevel) return true;
+  const current = RISK_ORDER[currentLevel] ?? 0;
+  const threshold = RISK_ORDER[minLevel.toUpperCase()] ?? 0;
+  return current >= threshold;
+}
+
 function parseDiffByFile(diff: string): Map<string, string> {
   const fileMap = new Map<string, string>();
   const fileSections = diff.split(/^diff --git /m);
@@ -353,7 +421,6 @@ function parseDiffByFile(diff: string): Map<string, string> {
     const headerMatch = section.match(/^a\/(.+?)\s+b\/(.+)/);
     if (!headerMatch) continue;
 
-    const aPath = headerMatch[1];
     const bPath = headerMatch[2];
 
     // Skip deleted files (b path is /dev/null)
