@@ -62,7 +62,7 @@ export function buildSummary(result: ReviewResult): string {
   if (result.requirementCompletion) {
     const rc = result.requirementCompletion;
     const pctIcon = rc.completionPercentage === 100 ? "✅" : rc.completionPercentage >= 50 ? "🟡" : "🔴";
-    lines.push(`## ${pctIcon} Requirements: ${rc.jiraKey} — ${rc.completionPercentage}% Complete (${rc.metCriteria}/${rc.totalCriteria})`);
+    lines.push(`## ${pctIcon} Requirements: ${rc.jiraKey} - ${rc.completionPercentage}% Complete (${rc.metCriteria}/${rc.totalCriteria})`);
     lines.push("");
     for (const r of rc.requirements) {
       const icon = r.coverage === "full" ? "✅" : r.coverage === "partial" ? "🟡" : "❌";

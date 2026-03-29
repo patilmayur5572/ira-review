@@ -110,7 +110,7 @@ program
         ...(opts.testFramework && { testFramework: opts.testFramework }),
       });
 
-      console.log(`\n🔍 IRA — AI-Powered PR Review\n`);
+      console.log(`\n🔍 IRA - AI-Powered PR Review\n`);
       const mode = config.sonar ? "Sonar + AI" : "AI-only";
       console.log(`  Mode:     ${mode}`);
       console.log(`  Sonar:    ${config.sonar ? config.sonar.projectKey : "not configured"}`);
@@ -221,7 +221,7 @@ program
         throw new Error(`Invalid test framework: "${testFramework}". Must be one of: ${VALID_TEST_FRAMEWORKS.join(", ")}`);
       }
 
-      console.log(`\n🧪 IRA — Test Case Generator\n`);
+      console.log(`\n🧪 IRA - Test Case Generator\n`);
       console.log(`  JIRA Ticket:  ${opts.jiraTicket}`);
       console.log(`  Framework:    ${testFramework}`);
       console.log(`  AI Provider:  ${aiProvider}`);
