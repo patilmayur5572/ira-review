@@ -316,9 +316,13 @@ IRA_NOTIFY_ON_AC_FAIL=true
 { "notifyMinRisk": "high", "notifyOnAcFail": true }
 ```
 
-## PR risk labels
+## PR risk visibility
 
-IRA automatically labels your PRs with risk level after each review (GitHub only):
+IRA makes risk visible directly in your PR list so tech leads can prioritize without opening each PR.
+
+### GitHub: risk labels
+
+IRA applies color-coded labels to your PRs after each review:
 
 | Label | Score | Color |
 |---|---|---|
@@ -329,7 +333,18 @@ IRA automatically labels your PRs with risk level after each review (GitHub only
 
 Labels update automatically when risk changes. Filter your PR list with `label:ira:critical label:ira:high` to prioritize reviews.
 
-> Bitbucket does not support PR labels natively. Risk level is shown in the summary comment instead.
+### Bitbucket: build status
+
+Bitbucket doesn't support PR labels, so IRA posts a **build status** on the PR commit instead. This shows as a status icon (✅ ❌ 🟡) in the PR list.
+
+| Risk level | Build status | Icon in PR list |
+|---|---|---|
+| CRITICAL | FAILED | 🔴 Red X |
+| HIGH | FAILED | 🔴 Red X |
+| MEDIUM | INPROGRESS | 🟡 Yellow dot |
+| LOW | SUCCESSFUL | 🟢 Green check |
+
+Hover over the icon to see the full risk score. You can also configure Bitbucket branch permissions to **block merging** when the IRA Risk status is FAILED, preventing high-risk PRs from being merged without review.
 
 ## What IRA posts on your PR
 
