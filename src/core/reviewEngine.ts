@@ -86,9 +86,10 @@ export class ReviewEngine {
 
     // Standalone mode requires diff context — fail fast if empty
     if (!this.config.sonar && diffByFile.size === 0) {
+      const hint = warnings.length > 0 ? `\nCause: ${warnings[warnings.length - 1]}` : "";
       throw new Error(
         "Standalone AI review requires PR diff context, but no diff could be fetched. " +
-        "Ensure SCM credentials and repo are configured correctly.",
+        "Ensure SCM credentials and repo are configured correctly." + hint,
       );
     }
 
@@ -355,14 +356,25 @@ export class ReviewEngine {
       }
     }
 
-    // 12. Send notifications (soft fail)
+    // 12. Send notifications (soft fail, respects minRiskLevel and notifyOnAcFail)
     if (this.config.notifications) {
-      try {
-        const notifier = new Notifier(this.config.notifications);
-        await notifier.notify(result);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Unknown error";
-        warnings.push(`Notification delivery failed: ${msg}`);
+      const riskTriggered = meetsRiskThreshold(
+        result.risk?.level ?? "LOW",
+        this.config.notifications.minRiskLevel,
+      );
+      const acFailed = this.config.notifications.notifyOnAcFail
+        && (result.requirementCompletion?.overallPass === false
+          || result.acceptanceValidation?.overallPass === false);
+      const shouldNotify = riskTriggered || acFailed;
+
+      if (shouldNotify) {
+        try {
+          const notifier = new Notifier(this.config.notifications);
+          await notifier.notify(result);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          warnings.push(`Notification delivery failed: ${msg}`);
+        }
       }
     }
 
@@ -385,6 +397,18 @@ export class ReviewEngine {
     console.log(`   Impact:   ${comment.aiReview.impact}`);
     console.log(`   Fix:      ${comment.aiReview.suggestedFix}`);
   }
+}
+
+const RISK_ORDER: Record<string, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+
+function meetsRiskThreshold(
+  currentLevel: string,
+  minLevel?: string,
+): boolean {
+  if (!minLevel) return true;
+  const current = RISK_ORDER[currentLevel] ?? 0;
+  const threshold = RISK_ORDER[minLevel.toUpperCase()] ?? 0;
+  return current >= threshold;
 }
 
 function parseDiffByFile(diff: string): Map<string, string> {
