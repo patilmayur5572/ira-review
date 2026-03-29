@@ -57,7 +57,10 @@ program
   .option("--jira-ac-field <field>", "Custom field ID for acceptance criteria")
   .option("--slack-webhook <url>", "Slack webhook URL for notifications")
   .option("--teams-webhook <url>", "Teams webhook URL for notifications")
+  .option("--notify-min-risk <level>", "Only notify when risk is at or above this level: low, medium, high, critical")
+  .option("--notify-on-ac-fail", "Send notification when JIRA acceptance criteria validation fails")
   .option("--ai-base-url <url>", "AI provider base URL (Azure endpoint, Ollama URL)")
+  .option("--ai-api-key <key>", "AI API key (or IRA_AI_API_KEY / OPENAI_API_KEY)")
   .option("--ai-api-version <version>", "Azure OpenAI API version")
   .option("--ai-deployment <name>", "Azure OpenAI deployment name")
   .option("--ai-model-critical <model>", "Stronger AI model for BLOCKER/CRITICAL issues")
@@ -87,6 +90,7 @@ program
         ...(opts.githubUrl && { githubUrl: opts.githubUrl }),
         ...(opts.aiProvider && { aiProvider: opts.aiProvider }),
         ...(opts.aiModel && { aiModel: opts.aiModel }),
+        ...(opts.aiApiKey && { aiApiKey: opts.aiApiKey }),
         ...(opts.dryRun && { dryRun: opts.dryRun }),
         ...(opts.minSeverity && { minSeverity: opts.minSeverity }),
         ...(opts.jiraUrl && { jiraUrl: opts.jiraUrl }),
@@ -96,6 +100,8 @@ program
         ...(opts.jiraAcField && { jiraAcField: opts.jiraAcField }),
         ...(opts.slackWebhook && { slackWebhook: opts.slackWebhook }),
         ...(opts.teamsWebhook && { teamsWebhook: opts.teamsWebhook }),
+        ...(opts.notifyMinRisk && { notifyMinRisk: opts.notifyMinRisk }),
+        ...(opts.notifyOnAcFail && { notifyOnAcFail: opts.notifyOnAcFail }),
         ...(opts.aiBaseUrl && { aiBaseUrl: opts.aiBaseUrl }),
         ...(opts.aiApiVersion && { aiApiVersion: opts.aiApiVersion }),
         ...(opts.aiDeployment && { aiDeploymentName: opts.aiDeployment }),

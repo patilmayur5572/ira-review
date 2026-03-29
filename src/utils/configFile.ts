@@ -63,6 +63,8 @@ function mapConfigToFlat(config: Record<string, unknown>): Partial<FlatConfig> {
   if (typeof config.jiraTicket === "string") flat.jiraTicket = config.jiraTicket;
   if (typeof config.jiraAcField === "string") flat.jiraAcField = config.jiraAcField;
   if (typeof config.aiDeploymentName === "string") flat.aiDeploymentName = config.aiDeploymentName;
+  if (typeof config.notifyMinRisk === "string") flat.notifyMinRisk = config.notifyMinRisk;
+  if (typeof config.notifyOnAcFail === "boolean") flat.notifyOnAcFail = config.notifyOnAcFail;
 
   return flat;
 }
