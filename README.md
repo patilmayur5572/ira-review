@@ -1,4 +1,4 @@
-# IRA — AI-Powered Code Reviews for Pull Requests
+# IRA - AI-Powered Code Reviews for Pull Requests
 
 IRA (Intelligent Review Assistant) reviews your pull requests using AI. It posts inline comments with explanations, impact assessments, and suggested fixes directly on your PR.
 
@@ -82,14 +82,14 @@ npx ira-review review \
 Example output posted on your PR:
 
 ```
-📊 Requirements: AUTH-234 — 67% Complete (4/6 AC met)
+📊 Requirements: AUTH-234 - 67% Complete (4/6 AC met)
 
   ✅ OAuth2 login flow implemented with Google provider
   ✅ JWT tokens generated on successful authentication
   ✅ Refresh token rotation with 7-day expiry
-  ❌ Input validation on login endpoint — no email format check
+  ❌ Input validation on login endpoint - no email format check
   ✅ Logout endpoint clears session and revokes token
-  ❌ Rate limiting on login attempts — not implemented
+  ❌ Rate limiting on login attempts - not implemented
 
   ⚠️ Edge Cases Not Covered:
      - What happens when Google OAuth is unreachable?
@@ -336,7 +336,7 @@ Labels update automatically when risk changes. Filter your PR list with `label:i
 **Inline comments** on the exact lines:
 
 ```
-🔍 IRA Review — ai/security (CRITICAL)
+🔍 IRA Review - ai/security (CRITICAL)
 
 > User input used directly in SQL query without sanitization.
 
