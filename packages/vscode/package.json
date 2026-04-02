@@ -1,0 +1,202 @@
+{
+  "name": "ira-review-vscode",
+  "displayName": "IRA — AI Code Reviews",
+  "description": "AI-powered code reviews inside your editor. Open source, privacy-first.",
+  "version": "0.1.0",
+  "publisher": "ira-review",
+  "license": "AGPL-3.0",
+  "icon": "resources/ira-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patilmayur5572/ira-review.git",
+    "directory": "packages/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Testing",
+    "Other"
+  ],
+  "keywords": [
+    "code review",
+    "AI",
+    "SonarQube",
+    "pull request",
+    "security",
+    "JIRA",
+    "CodeRabbit alternative"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node esbuild.js",
+    "build:prod": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package",
+    "publish-ext": "vsce publish && ovsx publish"
+  },
+  "dependencies": {
+    "ira-review": "file:../../"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "ira.reviewPR",
+        "title": "IRA: Review Current PR"
+      },
+      {
+        "command": "ira.reviewFile",
+        "title": "IRA: Review Current File"
+      },
+      {
+        "command": "ira.generateTests",
+        "title": "IRA: Generate Tests"
+      },
+      {
+        "command": "ira.showRisk",
+        "title": "IRA: Show Risk Score"
+      },
+      {
+        "command": "ira.configure",
+        "title": "IRA: Configure"
+      }
+    ],
+    "configuration": {
+      "title": "IRA Review",
+      "properties": {
+        "ira.scmProvider": {
+          "type": "string",
+          "enum": [
+            "github",
+            "bitbucket"
+          ],
+          "default": "github",
+          "description": "Source control provider"
+        },
+        "ira.aiProvider": {
+          "type": "string",
+          "enum": [
+            "copilot",
+            "openai",
+            "azure-openai",
+            "anthropic",
+            "ollama"
+          ],
+          "default": "copilot",
+          "description": "AI provider for code reviews (copilot = use your existing GitHub Copilot, no API key needed)"
+        },
+        "ira.aiModel": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "AI model to use for reviews"
+        },
+        "ira.aiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the AI provider",
+          "scope": "application",
+          "order": 1
+        },
+        "ira.minSeverity": {
+          "type": "string",
+          "enum": [
+            "BLOCKER",
+            "CRITICAL",
+            "MAJOR",
+            "MINOR",
+            "INFO"
+          ],
+          "default": "MAJOR",
+          "description": "Minimum severity level to display"
+        },
+        "ira.githubToken": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub/GHE personal access token (used if VS Code sign-in is unavailable)",
+          "scope": "application"
+        },
+        "ira.githubUrl": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub Enterprise API URL (e.g. https://ghe.company.com/api/v3)"
+        },
+        "ira.bitbucketToken": {
+          "type": "string",
+          "default": "",
+          "description": "Bitbucket personal access token"
+        },
+        "ira.bitbucketUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Bitbucket server URL"
+        },
+        "ira.sonarUrl": {
+          "type": "string",
+          "default": "",
+          "description": "SonarQube server URL"
+        },
+        "ira.sonarToken": {
+          "type": "string",
+          "default": "",
+          "description": "SonarQube authentication token"
+        },
+        "ira.sonarProjectKey": {
+          "type": "string",
+          "default": "",
+          "description": "SonarQube project key"
+        },
+        "ira.jiraUrl": {
+          "type": "string",
+          "default": "",
+          "description": "JIRA instance URL"
+        },
+        "ira.jiraEmail": {
+          "type": "string",
+          "default": "",
+          "description": "JIRA account email"
+        },
+        "ira.jiraToken": {
+          "type": "string",
+          "default": "",
+          "description": "JIRA API token"
+        },
+        "ira.autoReviewOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "⭐ Pro: Automatically review files on save"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ira-explorer",
+          "title": "IRA Review",
+          "icon": "resources/ira-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ira-explorer": [
+        {
+          "id": "ira-issues",
+          "name": "Issues"
+        },
+        {
+          "id": "ira-history",
+          "name": "History"
+        }
+      ]
+    }
+  }
+}
