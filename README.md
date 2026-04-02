@@ -2,7 +2,9 @@
 
 IRA (Intelligent Review Assistant) reviews your pull requests using AI. It posts inline comments with explanations, impact assessments, and suggested fixes directly on your PR.
 
-**Works with any language.** Supports GitHub and Bitbucket Cloud.
+**Works with any language.** Supports GitHub, GitHub Enterprise, Bitbucket Cloud, and Bitbucket Server/Data Center.
+
+> 🆕 **Now available as a [VS Code Extension](#vs-code-extension)** - get AI code reviews right inside your editor using GitHub Copilot.
 
 ## What can IRA do?
 
@@ -380,6 +382,35 @@ Create `.irarc.json` in your project root to set defaults:
 ```
 
 CLI flags override env vars, which override the config file. Tokens and keys are blocked from config files for security.
+
+## VS Code Extension
+
+Use IRA directly inside your editor. No terminal needed.
+
+### Install
+
+Search **"IRA - AI Code Reviews"** in the VS Code Extensions panel, or:
+
+```bash
+code --install-extension ira-review.ira-review-vscode
+```
+
+### Features
+
+- **Zero config** - uses your existing GitHub Copilot subscription (or bring OpenAI, Anthropic, Ollama)
+- **Diagnostics** - issues show up as squiggly lines with severity levels
+- **CodeLens** - inline annotations on affected lines
+- **TreeView** - sidebar panel with all issues grouped by file
+- **Risk Score** - status bar badge showing LOW / MEDIUM / HIGH / CRITICAL
+- **Multi-SCM** - GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
+
+### Quick Start
+
+1. Open a project with a git remote
+2. Run `IRA: Review Current PR` from the Command Palette (`Cmd+Shift+P`)
+3. Enter the PR number. IRA reviews every changed file and shows results inline
+
+📖 **Full extension docs:** [`packages/vscode/README.md`](packages/vscode/README.md)
 
 ## Security
 
