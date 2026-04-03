@@ -1,10 +1,10 @@
 {
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
-  "description": "AI-powered code reviews inside your editor. Open source, privacy-first.",
-  "version": "0.1.0",
+  "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
+  "version": "1.0.0",
   "publisher": "ira-review",
-  "license": "AGPL-3.0",
+  "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
   "repository": {
     "type": "git",
@@ -69,8 +69,40 @@
       {
         "command": "ira.configure",
         "title": "IRA: Configure"
+      },
+      {
+        "command": "ira.activateLicense",
+        "title": "IRA: Activate Pro License"
+      },
+      {
+        "command": "ira.deactivateLicense",
+        "title": "IRA: Deactivate Pro License"
+      },
+      {
+        "command": "ira.applyFix",
+        "title": "IRA: Apply Fix"
+      },
+      {
+        "command": "ira.showIssueDetail",
+        "title": "IRA: Show Issue Detail"
+      },
+      {
+        "command": "ira.generatePRDescription",
+        "title": "IRA: Generate PR Description"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "ira.applyFix",
+          "when": "false"
+        },
+        {
+          "command": "ira.showIssueDetail",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "IRA Review",
       "properties": {
@@ -174,6 +206,41 @@
           "type": "boolean",
           "default": false,
           "description": "⭐ Pro: Automatically review files on save"
+        },
+        "ira.polarOrganizationId": {
+          "type": "string",
+          "default": "",
+          "description": "Polar.sh Organization ID for license validation",
+          "scope": "application"
+        },
+        "ira.proCheckoutUrl": {
+          "type": "string",
+          "default": "https://polar.sh",
+          "description": "Polar.sh checkout URL for Pro upgrade",
+          "scope": "application"
+        },
+        "ira.slackWebhookUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Slack webhook URL for review notifications",
+          "scope": "application"
+        },
+        "ira.teamsWebhookUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Microsoft Teams webhook URL for review notifications",
+          "scope": "application"
+        },
+        "ira.notifyMinRisk": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "default": "low",
+          "description": "Minimum risk level to trigger notifications (low = notify on every review)"
+        },
+        "ira.notifyOnAcFail": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send notification when JIRA acceptance criteria fail, regardless of risk level"
         }
       }
     },
@@ -194,7 +261,12 @@
         },
         {
           "id": "ira-history",
-          "name": "History"
+          "name": "History ⭐"
+        },
+        {
+          "type": "webview",
+          "id": "ira-dashboard",
+          "name": "Trends ⭐"
         }
       ]
     }
