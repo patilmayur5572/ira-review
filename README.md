@@ -1,5 +1,8 @@
 # IRA - AI-Powered Code Reviews for Pull Requests
 
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/ira-review.ira-review-vscode?label=VS%20Code%20Marketplace&color=blue)](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
+[![npm](https://img.shields.io/npm/v/ira-review?color=red)](https://www.npmjs.com/package/ira-review)
+
 IRA (Intelligent Review Assistant) reviews your pull requests using AI. It posts inline comments with explanations, impact assessments, and suggested fixes directly on your PR.
 
 **Works with any language.** Supports GitHub, GitHub Enterprise, Bitbucket Cloud, and Bitbucket Server/Data Center.
