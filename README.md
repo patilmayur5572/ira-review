@@ -6,6 +6,15 @@ IRA (Intelligent Review Assistant) reviews your pull requests using AI. It posts
 
 > 🆕 **Now available as a [VS Code Extension](#vs-code-extension)** - get AI code reviews right inside your editor using GitHub Copilot.
 
+## What's New in v1.0.0
+
+- **⚠️ Breaking:** Rule prefixes renamed from `ai/` → `IRA/` (e.g. `IRA/security`, `IRA/best-practice`)
+- **Risk scoring v2** — BLOCKER issues now set a minimum HIGH severity floor; CRITICAL issues set minimum MEDIUM
+- **VS Code Extension** — full-featured editor integration with Pro tier (auto-review, apply fix, trends dashboard)
+- **Notifications** — Slack & Teams now available in both CLI and VS Code extension
+- **Bug fix** — Security issues are now correctly detected and classified (stale prefix was preventing detection)
+- **License** — switched to proprietary license
+
 ## What can IRA do?
 
 - **Review your code** using AI and post inline comments with explanation, impact, and fix
@@ -353,7 +362,7 @@ Hover over the icon to see the full risk score. You can also configure Bitbucket
 **Inline comments** on the exact lines:
 
 ```
-🔍 IRA Review - ai/security (CRITICAL)
+🔍 IRA Review — IRA/security (CRITICAL)
 
 > User input used directly in SQL query without sanitization.
 
@@ -403,6 +412,12 @@ code --install-extension ira-review.ira-review-vscode
 - **TreeView** - sidebar panel with all issues grouped by file
 - **Risk Score** - status bar badge showing LOW / MEDIUM / HIGH / CRITICAL
 - **Multi-SCM** - GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
+- **Auto-review on Save** ⭐ Pro - automatically reviews files when you save
+- **Apply Fix** ⭐ Pro - one-click AI-generated fix via CodeLens
+- **Review History** ⭐ Pro - browse past reviews in a sidebar tree
+- **Trends Dashboard** ⭐ Pro - visualize issues over time
+- **Generate PR Description** - AI-powered PR descriptions with JIRA ticket detection
+- **Slack & Teams Notifications** - get notified after reviews
 
 ### Quick Start
 
@@ -417,7 +432,6 @@ code --install-extension ira-review.ira-review-vscode
 - Runs in your CI. Tokens never leave your infrastructure
 - No telemetry, analytics, or tracking
 - Config files block sensitive fields automatically
-- Open source. Every line is auditable
 
 ## Requirements
 
@@ -427,6 +441,6 @@ code --install-extension ira-review.ira-review-vscode
 
 ## License
 
-[AGPL-3.0](LICENSE). For commercial licensing, contact [patilmayur5572@gmail.com](mailto:patilmayur5572@gmail.com).
+[Proprietary](LICENSE). See LICENSE file for details.
 
 📖 **Full CLI reference:** Run `npx ira-review review --help`

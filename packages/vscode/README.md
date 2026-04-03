@@ -1,10 +1,8 @@
 # IRA - Intelligent Review Assistant
 
-**The open-source CodeRabbit. AI code reviews inside your editor.**
+**AI code reviews inside your editor. Privacy-first, runs locally.**
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/ira-review.ira-review-vscode?label=VS%20Code%20Marketplace&color=blue)](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-green.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![GitHub Stars](https://img.shields.io/github/stars/patilmayur5572/ira-review?style=social)](https://github.com/patilmayur5572/ira-review)
 
 ---
 
@@ -16,6 +14,8 @@
 - 🌳 **TreeView** - sidebar panel with all issues grouped by file
 - 🛡️ **Risk Score** - status bar badge showing the overall risk level of your PR
 - 🔗 **SonarQube + JIRA** - enrich reviews with static analysis and acceptance criteria validation
+- 📢 **Slack & Teams Notifications** - get notified after reviews with risk threshold filtering
+- 📋 **Generate PR Description** - AI-powered PR descriptions with JIRA ticket auto-detection from branch names
 
 <!-- Screenshot: Diagnostics view showing issues as squiggly lines -->
 
@@ -41,11 +41,11 @@ That's it. Issues will appear inline in your editor within seconds.
 🔍 IRA: Found 3 issues (Risk: MEDIUM)
 
 src/routes/todos.ts
-  ⚠️ [ai/security] SQL injection risk - user input not sanitized
-  ℹ️ [ai/performance] Missing database index on frequently queried column
+  ⚠️ [IRA/security] SQL injection risk - user input not sanitized
+  ℹ️ [IRA/performance] Missing database index on frequently queried column
 
 src/middleware/auth.ts
-  🔴 [ai/security] JWT secret hardcoded - use environment variable
+  🔴 [IRA/security] JWT secret hardcoded - use environment variable
 ```
 
 ---
@@ -106,11 +106,14 @@ Open **Settings > Extensions > IRA** or add these to your `settings.json`:
 | `ira.sonarToken`     | SonarQube authentication token                     |             |
 | `ira.jiraUrl`        | JIRA instance URL for AC validation                |             |
 | `ira.jiraToken`      | JIRA API token                                     |             |
+| `ira.slackWebhookUrl` | Slack webhook URL for review notifications | |
+| `ira.teamsWebhookUrl` | Teams webhook URL for review notifications | |
+| `ira.notifyMinRisk`   | Minimum risk level to trigger notifications: `low`, `medium`, `high`, `critical` | `low` |
+| `ira.notifyOnAcFail`  | Notify when JIRA acceptance criteria fail | `false` |
 
 ---
 
 ## Links
 
-- **GitHub**: [github.com/patilmayur5572/ira-review](https://github.com/patilmayur5572/ira-review)
-- **CLI Package**: `npm install -g ira-review`
-- **License**: [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0)
+- **Marketplace**: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
+- **Support**: patilmayur5572@gmail.com

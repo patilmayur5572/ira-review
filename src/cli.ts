@@ -1,7 +1,7 @@
 /**
  * IRA — Intelligent Review Assistant
  * Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
- * Licensed under AGPL-3.0. See LICENSE file for details.
+ * Proprietary License. See LICENSE file for details.
  * Commercial license available — contact patilmayur5572@gmail.com
  */
 
@@ -17,8 +17,8 @@ import { detectFramework } from "./frameworks/detector.js";
 import type { TestFramework } from "./types/jira.js";
 
 const LICENSE_BANNER = `
-  ⚖️  IRA is licensed under AGPL-3.0.
-  📧 Commercial license: patilmayur5572@gmail.com
+  ⚖️  IRA is proprietary software. See LICENSE for details.
+  📧 Contact: patilmayur5572@gmail.com
   📖 https://github.com/patilmayur5572/ira-review
 `;
 
