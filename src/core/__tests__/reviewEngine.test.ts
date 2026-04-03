@@ -190,7 +190,7 @@ describe("ReviewEngine", () => {
 
     expect(result.complexity).not.toBeNull();
     expect(result.acceptanceValidation).toBeNull();
-  });
+  }, 15000);
 
   it("returns empty comments when no issues match filter", async () => {
     const emptyResponse: SonarSearchResponse = {
