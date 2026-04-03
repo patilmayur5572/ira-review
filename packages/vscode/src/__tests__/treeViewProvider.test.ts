@@ -3,9 +3,9 @@ import './setup';
 
 describe('treeViewProvider', () => {
   const mockComments = [
-    { filePath: 'src/app.ts', line: 10, rule: 'ai/security', severity: 'CRITICAL', message: 'SQL injection', aiReview: { explanation: '', impact: 'High', suggestedFix: 'Parameterize' } },
-    { filePath: 'src/app.ts', line: 20, rule: 'ai/performance', severity: 'MINOR', message: 'Slow query', aiReview: { explanation: '', impact: 'Low', suggestedFix: 'Add index' } },
-    { filePath: 'src/auth.ts', line: 5, rule: 'ai/security', severity: 'BLOCKER', message: 'Hardcoded secret', aiReview: { explanation: '', impact: 'Critical', suggestedFix: 'Use env var' } },
+    { filePath: 'src/app.ts', line: 10, rule: 'IRA/security', severity: 'CRITICAL', message: 'SQL injection', aiReview: { explanation: '', impact: 'High', suggestedFix: 'Parameterize' } },
+    { filePath: 'src/app.ts', line: 20, rule: 'IRA/performance', severity: 'MINOR', message: 'Slow query', aiReview: { explanation: '', impact: 'Low', suggestedFix: 'Add index' } },
+    { filePath: 'src/auth.ts', line: 5, rule: 'IRA/security', severity: 'BLOCKER', message: 'Hardcoded secret', aiReview: { explanation: '', impact: 'Critical', suggestedFix: 'Use env var' } },
   ];
 
   it('groups comments by file', () => {

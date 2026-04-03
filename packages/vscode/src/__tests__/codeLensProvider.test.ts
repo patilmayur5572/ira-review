@@ -3,8 +3,8 @@ import './setup';
 
 describe('codeLensProvider', () => {
   const mockComments = [
-    { filePath: 'src/app.ts', line: 10, rule: 'ai/security', severity: 'CRITICAL', message: 'Issue 1', aiReview: { explanation: 'exp', impact: 'imp', suggestedFix: 'fix' } },
-    { filePath: 'src/utils.ts', line: 5, rule: 'ai/perf', severity: 'MINOR', message: 'Issue 2', aiReview: { explanation: 'exp', impact: 'imp', suggestedFix: 'fix' } },
+    { filePath: 'src/app.ts', line: 10, rule: 'IRA/security', severity: 'CRITICAL', message: 'Issue 1', aiReview: { explanation: 'exp', impact: 'imp', suggestedFix: 'fix' } },
+    { filePath: 'src/utils.ts', line: 5, rule: 'IRA/perf', severity: 'MINOR', message: 'Issue 2', aiReview: { explanation: 'exp', impact: 'imp', suggestedFix: 'fix' } },
   ];
 
   it('filters comments by file path', () => {

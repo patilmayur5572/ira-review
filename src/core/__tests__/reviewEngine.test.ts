@@ -141,7 +141,7 @@ describe("ReviewEngine", () => {
 
   it("posts to Bitbucket when not in dry-run mode", async () => {
     let sonarCallCount = 0;
-    globalThis.fetch = vi.fn().mockImplementation((_url: string) => {
+    globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
       const url = typeof _url === "string" ? _url : "";
       // Sonar API calls
       if (url.includes("sonar.example.com")) {
@@ -155,11 +155,26 @@ describe("ReviewEngine", () => {
           ),
         });
       }
-      // All other calls (diff, file content, comment tracker, post comment, post summary)
+      // Comment tracker (paginated comments endpoint)
+      if (url.includes("/comments")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ values: [], next: undefined }),
+        });
+      }
+      // Post comment / post summary (POST/PUT calls)
+      if (init?.method === "POST" || init?.method === "PUT") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve(""),
+        });
+      }
+      // All other calls (diff, file content)
       return Promise.resolve({
         ok: true,
         text: () => Promise.resolve("diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new"),
-        json: () => Promise.resolve({ values: [], content: "file content", encoding: "utf-8" }),
+        json: () => Promise.resolve({ content: "file content", encoding: "utf-8" }),
       });
     });
 

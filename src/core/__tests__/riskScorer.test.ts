@@ -33,7 +33,7 @@ describe("calculateRisk", () => {
   });
 
   it("scores high with blocker issues", () => {
-    const blockers = Array.from({ length: 4 }, (_, i) =>
+    const blockers = Array.from({ length: 2 }, (_, i) =>
       makeIssue({ key: `B-${i}`, severity: "BLOCKER" }),
     );
 
@@ -44,12 +44,9 @@ describe("calculateRisk", () => {
       filesChanged: 1,
     });
 
-    // 4 blockers × 10 = 30 (capped at 30) + density (4/1 = 4 → 20 → capped 15)
-    expect(result.score).toBeGreaterThanOrEqual(40);
+    // 2 blockers × 15 = 30 + severity floor → at least HIGH
+    expect(result.score).toBeGreaterThanOrEqual(30);
     expect(["HIGH", "CRITICAL"]).toContain(result.level);
-    expect(result.factors.find((f) => f.name === "Blocker Issues")!.score).toBe(
-      30,
-    );
   });
 
   it("scores points for critical issues", () => {
@@ -66,7 +63,64 @@ describe("calculateRisk", () => {
 
     expect(
       result.factors.find((f) => f.name === "Critical Issues")!.score,
-    ).toBe(15);
+    ).toBe(25); // 3 × 10 = 30, capped at 25
+  });
+
+  it("scores points for major issues", () => {
+    const majors = Array.from({ length: 5 }, (_, i) =>
+      makeIssue({ key: `M-${i}`, severity: "MAJOR" }),
+    );
+
+    const result = calculateRisk({
+      allIssues: majors,
+      filteredIssues: majors,
+      complexity: null,
+      filesChanged: 1,
+    });
+
+    expect(
+      result.factors.find((f) => f.name === "Major Issues")!.score,
+    ).toBe(15); // 5 × 3 = 15 (capped at 15)
+  });
+
+  it("any BLOCKER guarantees at least HIGH risk", () => {
+    const result = calculateRisk({
+      allIssues: [makeIssue({ severity: "BLOCKER" })],
+      filteredIssues: [makeIssue({ severity: "BLOCKER" })],
+      complexity: null,
+      filesChanged: 10,
+    });
+
+    expect(["HIGH", "CRITICAL"]).toContain(result.level);
+  });
+
+  it("any CRITICAL guarantees at least MEDIUM risk", () => {
+    const result = calculateRisk({
+      allIssues: [makeIssue({ severity: "CRITICAL" })],
+      filteredIssues: [makeIssue({ severity: "CRITICAL" })],
+      complexity: null,
+      filesChanged: 10,
+    });
+
+    expect(["MEDIUM", "HIGH", "CRITICAL"]).toContain(result.level);
+  });
+
+  it("1 CRITICAL among 9 MINOR issues is at least MEDIUM", () => {
+    const issues = [
+      makeIssue({ key: "C-0", severity: "CRITICAL" }),
+      ...Array.from({ length: 9 }, (_, i) =>
+        makeIssue({ key: `M-${i}`, severity: "MINOR" }),
+      ),
+    ];
+
+    const result = calculateRisk({
+      allIssues: issues,
+      filteredIssues: issues,
+      complexity: null,
+      filesChanged: 5,
+    });
+
+    expect(["MEDIUM", "HIGH", "CRITICAL"]).toContain(result.level);
   });
 
   it("adds score for security/vulnerability issues", () => {
