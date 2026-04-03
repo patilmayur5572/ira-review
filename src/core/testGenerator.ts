@@ -1,7 +1,7 @@
 /**
  * IRA — Intelligent Review Assistant
  * Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
- * Licensed under AGPL-3.0. See LICENSE file for details.
+ * Proprietary License. See LICENSE file for details.
  * Commercial license available — contact patilmayur5572@gmail.com
  */
 

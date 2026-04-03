@@ -12,6 +12,7 @@ import { IraIssuesProvider } from '../providers/treeViewProvider';
 import { IraCodeLensProvider } from '../providers/codeLensProvider';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { setLastResult } from '../extension';
+import { ReviewHistoryStore } from '../services/reviewHistoryStore';
 import * as cp from 'child_process';
 
 export async function reviewPR(
@@ -170,10 +171,37 @@ export async function reviewPR(
         }
 
         setLastResult(result);
+
+        // Send notifications if configured
+        try {
+          const slackWebhookUrl = config.get<string>('slackWebhookUrl', '');
+          const teamsWebhookUrl = config.get<string>('teamsWebhookUrl', '');
+          if (slackWebhookUrl || teamsWebhookUrl) {
+            const { Notifier } = await import('ira-review');
+            const notifier = new Notifier({
+              slackWebhookUrl: slackWebhookUrl || undefined,
+              teamsWebhookUrl: teamsWebhookUrl || undefined,
+              minRiskLevel: config.get<string>('notifyMinRisk', 'low') as any,
+              notifyOnAcFail: config.get<boolean>('notifyOnAcFail', false),
+            });
+            await notifier.notify(result);
+          }
+        } catch (notifyErr) {
+          console.warn('IRA: Notification failed:', notifyErr);
+        }
+
         updateDiagnostics(result.comments, diagnosticCollection, workspaceRoot);
         updateStatusBar(statusBar, result.risk);
         treeProvider.update(result.comments);
         codeLensProvider.update(result.comments);
+
+        // Save to review history (all users — UI gated behind Pro)
+        try {
+          const historyStore = ReviewHistoryStore.getInstance();
+          await historyStore.save(result);
+        } catch {
+          // History store not initialized — soft fail
+        }
 
         vscode.window.showInformationMessage(
           `IRA: Found ${result.totalIssues} issues (Risk: ${result.risk?.level ?? 'N/A'})`
@@ -263,7 +291,7 @@ async function runCopilotReview(
           comments.push({
             filePath,
             line: issue.line,
-            rule: `ai/${issue.category}`,
+            rule: `IRA/${issue.category}`,
             severity: issue.severity,
             message: issue.message,
             aiReview: {
@@ -277,7 +305,7 @@ async function runCopilotReview(
         comments.push({
           filePath,
           line: 1,
-          rule: 'ai/review',
+          rule: 'IRA/review',
           severity: 'MAJOR',
           message: 'AI review finding',
           aiReview: { explanation: rawResponse, impact: 'See above', suggestedFix: 'Review manually' },
@@ -285,24 +313,27 @@ async function runCopilotReview(
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`IRA: AI review skipped for ${filePath}: ${msg}`);
     }
   }
 
   // 5. Calculate risk
+  const sonarIssues = comments.map((c, i) => ({
+    key: `AI-${i}`,
+    rule: c.rule,
+    severity: c.severity as 'BLOCKER' | 'CRITICAL' | 'MAJOR' | 'MINOR' | 'INFO',
+    component: c.filePath,
+    message: c.message,
+    line: c.line,
+    type: c.rule.includes('security') ? 'VULNERABILITY' as const : 'CODE_SMELL' as const,
+    flows: [] as { locations: { component: string; msg: string }[] }[],
+    tags: [c.rule.replace('IRA/', '')],
+  }));
+
   const risk = comments.length > 0
     ? calculateRisk({
-        allIssues: comments.map((c, i) => ({
-          key: `AI-${i}`,
-          rule: c.rule,
-          severity: c.severity as 'BLOCKER' | 'CRITICAL' | 'MAJOR' | 'MINOR' | 'INFO',
-          component: c.filePath,
-          message: c.message,
-          line: c.line,
-          type: c.rule.includes('security') ? 'VULNERABILITY' : 'CODE_SMELL',
-          flows: [],
-          tags: [c.rule.replace('ai/', '')],
-        })),
-        filteredIssues: [],
+        allIssues: sonarIssues,
+        filteredIssues: sonarIssues,
         complexity: null,
         filesChanged: diffByFile.size,
       })

@@ -181,7 +181,7 @@ export class ReviewEngine {
             return foundIssues.map((issue: AIFoundIssue) => ({
               filePath,
               line: issue.line,
-              rule: `ai/${issue.category}`,
+              rule: `IRA/${issue.category}`,
               severity: issue.severity,
               message: issue.message,
               aiReview: {
@@ -221,9 +221,9 @@ export class ReviewEngine {
         component: c.filePath,
         message: c.message,
         line: c.line,
-        type: c.rule.startsWith("ai/security") ? "VULNERABILITY" : "CODE_SMELL",
+        type: c.rule.includes("security") ? "VULNERABILITY" : "CODE_SMELL",
         flows: [],
-        tags: [c.rule.replace("ai/", "")],
+        tags: [c.rule.replace(/^(ai|IRA)\//, "")],
       }));
     }
 

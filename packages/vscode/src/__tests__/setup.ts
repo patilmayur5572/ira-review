@@ -21,12 +21,17 @@ vi.mock('vscode', () => ({
     showErrorMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     showInputBox: vi.fn(),
+    showQuickPick: vi.fn(),
+    showTextDocument: vi.fn(),
+    withProgress: vi.fn((opts: any, task: any) => task({ report: vi.fn() })),
+    registerWebviewViewProvider: vi.fn(),
     registerTreeDataProvider: vi.fn(),
   },
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }],
     getConfiguration: vi.fn(() => ({ get: vi.fn() })),
     asRelativePath: vi.fn((uri: any) => typeof uri === 'string' ? uri : uri.path),
+    openTextDocument: vi.fn(() => ({ uri: { fsPath: '/test/doc' } })),
   },
   languages: {
     createDiagnosticCollection: vi.fn(() => ({ set: vi.fn(), clear: vi.fn(), dispose: vi.fn() })),
@@ -38,6 +43,7 @@ vi.mock('vscode', () => ({
   lm: { selectChatModels: vi.fn() },
   authentication: { getSession: vi.fn() },
   ProgressLocation: { Notification: 1 },
+  env: { machineId: 'test-machine-id', openExternal: vi.fn() },
 }));
 
 // Mock ira-review
@@ -49,4 +55,6 @@ vi.mock('ira-review', () => ({
   buildStandalonePrompt: vi.fn(() => 'test prompt'),
   parseStandaloneResponse: vi.fn(() => []),
   calculateRisk: vi.fn(() => ({ level: 'LOW', score: 10, maxScore: 100 })),
+  JiraClient: vi.fn(function (this: any) { this.fetchIssue = vi.fn().mockResolvedValue({ summary: 'Test issue', acceptanceCriteria: 'AC1' }); }),
+  createAIProvider: vi.fn(() => ({ review: vi.fn(() => ({ explanation: 'test', impact: '', suggestedFix: '' })) })),
 }));
