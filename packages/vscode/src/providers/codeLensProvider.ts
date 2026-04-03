@@ -22,22 +22,32 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
       (c) => c.filePath === relativePath || c.filePath === relativePath.replace(/\\/g, '/')
     );
 
-    return matching.map((comment) => {
+    const lenses: vscode.CodeLens[] = [];
+
+    for (const comment of matching) {
       const line = Math.max(0, comment.line - 1);
       const range = new vscode.Range(line, 0, line, 0);
       const title = `🔍 IRA: ${comment.severity} — ${comment.message}`;
       const truncated = title.length > 80 ? title.substring(0, 77) + '...' : title;
 
-      return new vscode.CodeLens(range, {
+      lenses.push(new vscode.CodeLens(range, {
         title: truncated,
-        command: 'vscode.window.showInformationMessage',
+        command: 'ira.showIssueDetail',
         arguments: [
           `[${comment.rule}] ${comment.severity}\n\n` +
           `📝 ${comment.aiReview.explanation}\n\n` +
           `⚡ Impact: ${comment.aiReview.impact}\n\n` +
           `💡 Fix: ${comment.aiReview.suggestedFix}`,
         ],
-      });
-    });
+      }));
+
+      lenses.push(new vscode.CodeLens(range, {
+        title: '⭐ Apply Fix',
+        command: 'ira.applyFix',
+        arguments: [comment],
+      }));
+    }
+
+    return lenses;
   }
 }
