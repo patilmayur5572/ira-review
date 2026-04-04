@@ -9,6 +9,7 @@
 ## Features
 
 - 🔍 **AI-Powered Code Reviews** - review PRs using GitHub Copilot, OpenAI, Anthropic, or Ollama (local)
+- 📄 **Review Current File** - review the currently open file without needing a PR
 - 🎯 **Diagnostics** - issues show up as squiggly lines in your editor, just like TypeScript errors
 - 📝 **CodeLens** - inline annotations on affected lines so you don't miss anything
 - 🌳 **TreeView** - sidebar panel with all issues grouped by file
@@ -16,6 +17,7 @@
 - 🔗 **SonarQube + JIRA** - enrich reviews with static analysis and acceptance criteria validation
 - 📢 **Slack & Teams Notifications** - get notified after reviews with risk threshold filtering
 - 📋 **Generate PR Description** - AI-powered PR descriptions with JIRA ticket auto-detection from branch names
+- 🧪 **Generate Tests** - generate test cases from JIRA acceptance criteria in 8 frameworks
 
 <!-- Screenshot: Diagnostics view showing issues as squiggly lines -->
 
@@ -52,21 +54,23 @@ src/middleware/auth.ts
 
 ## Free vs Pro
 
-| Feature                    | Free | Pro ($10/mo) |
-| -------------------------- | :--: | :----------: |
-| PR Reviews                 |  ✅  |      ✅      |
-| Copilot AI (zero config)   |  ✅  |      ✅      |
-| OpenAI / Anthropic / Ollama|  ✅  |      ✅      |
-| Diagnostics + CodeLens     |  ✅  |      ✅      |
-| TreeView + Risk Score      |  ✅  |      ✅      |
-| SonarQube Integration      |  ✅  |      ✅      |
-| JIRA AC Validation         |  ✅  |      ✅      |
-| Auto-review on Save        |  -   |      ✅      |
-| One-click Apply Fix        |  -   |      ✅      |
-| Review History + Trends    |  -   |      ✅      |
-| Post to PR (selective)     |  -   |      ✅      |
-| Custom Review Rules        |  -   |      ✅      |
-| Priority Support           |  -   |      ✅      |
+| Feature | Free | Pro |
+|---|---|---|
+| PR Reviews | ✅ | ✅ |
+| Review Current File | ✅ | ✅ |
+| Copilot AI (zero config) | ✅ | ✅ |
+| OpenAI / Anthropic / Ollama | ✅ | ✅ |
+| Diagnostics + CodeLens | ✅ | ✅ |
+| TreeView + Risk Score | ✅ | ✅ |
+| SonarQube Integration | ✅ | ✅ |
+| JIRA AC Validation | ✅ | ✅ |
+| Generate PR Description | ✅ | ✅ |
+| Test Generation from JIRA | ✅ | ✅ |
+| Slack & Teams Notifications | ✅ | ✅ |
+| Auto-review on Save | - | ✅ |
+| One-click Apply Fix | - | ✅ |
+| Review History + Trends | - | ✅ |
+| Priority Support | - | ✅ |
 
 ---
 
@@ -110,6 +114,19 @@ Open **Settings > Extensions > IRA** or add these to your `settings.json`:
 | `ira.teamsWebhookUrl` | Teams webhook URL for review notifications | |
 | `ira.notifyMinRisk`   | Minimum risk level to trigger notifications: `low`, `medium`, `high`, `critical` | `low` |
 | `ira.notifyOnAcFail`  | Notify when JIRA acceptance criteria fail | `false` |
+
+---
+
+## Commands
+
+- `IRA: Review Current PR`
+- `IRA: Review Current File`
+- `IRA: Generate Tests`
+- `IRA: Generate PR Description`
+- `IRA: Show Risk Score`
+- `IRA: Activate Pro License`
+- `IRA: Deactivate Pro License`
+- `IRA: Configure`
 
 ---
 

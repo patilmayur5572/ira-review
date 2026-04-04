@@ -6,6 +6,8 @@
 import * as vscode from 'vscode';
 import { reviewPR } from './commands/reviewPR';
 import { generatePRDescription } from './commands/generatePRDescription';
+import { generateTests } from './commands/generateTests';
+import { reviewFile } from './commands/reviewFile';
 import { createStatusBar, updateStatusBar } from './providers/statusBarProvider';
 import { IraIssuesProvider } from './providers/treeViewProvider';
 import { IraCodeLensProvider } from './providers/codeLensProvider';
@@ -71,11 +73,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('ira.generatePRDescription', () => generatePRDescription()),
     vscode.commands.registerCommand('ira.reviewFile', () =>
-      vscode.window.showInformationMessage('IRA: Review Current File — coming soon. Use "IRA: Review Current PR" for now.')
+      reviewFile(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider)
     ),
-    vscode.commands.registerCommand('ira.generateTests', () =>
-      vscode.window.showInformationMessage('IRA: Test Generation — coming soon. Stay tuned!')
-    ),
+    vscode.commands.registerCommand('ira.generateTests', () => generateTests()),
     vscode.commands.registerCommand('ira.showRisk', () => {
       const result = getLastResult();
       if (result?.risk) {
