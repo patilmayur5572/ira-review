@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -201,6 +201,12 @@
           "type": "string",
           "default": "",
           "description": "JIRA API token"
+        },
+        "ira.testFramework": {
+          "type": "string",
+          "enum": ["jest", "vitest", "mocha", "playwright", "cypress", "gherkin", "pytest", "junit"],
+          "default": "jest",
+          "description": "Default test framework for test generation"
         },
         "ira.autoReviewOnSave": {
           "type": "boolean",

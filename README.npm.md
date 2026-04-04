@@ -4,7 +4,7 @@ IRA reviews your pull requests using AI and posts inline comments with explanati
 
 **Works with any language.** Supports GitHub, GitHub Enterprise, Bitbucket Cloud, and Bitbucket Server/Data Center.
 
-> 🆕 **Also available as a [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)** — AI reviews right inside your editor.
+> 🆕 **Also available as a [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)** — AI reviews right inside your editor. Now with **Review Current File** (no PR needed) and **Test Generation** from JIRA acceptance criteria.
 
 ## Quick Start
 
