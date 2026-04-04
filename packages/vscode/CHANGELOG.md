@@ -2,6 +2,18 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [1.0.1] - 2025-04-04
+
+### Added
+
+- **Generate Tests** - generate test cases from JIRA acceptance criteria in 8 frameworks (Cmd+Shift+P → IRA: Generate Tests)
+- **Review Current File** - review the currently open file without needing a PR (Cmd+Shift+P → IRA: Review Current File)
+
+### Fixed
+
+- CLI version now correctly reports 1.0.1 (was showing 0.7.0)
+- Feature table updated to reflect all available features
+
 ## [1.0.0] — 2025-04-03
 
 ### Added

@@ -9,14 +9,12 @@ IRA (Intelligent Review Assistant) reviews your pull requests using AI. It posts
 
 > 🆕 **Now available as a [VS Code Extension](#vs-code-extension)** - get AI code reviews right inside your editor using GitHub Copilot.
 
-## What's New in v1.0.0
+## What's New in v1.0.1
 
-- **⚠️ Breaking:** Rule prefixes renamed from `ai/` → `IRA/` (e.g. `IRA/security`, `IRA/best-practice`)
-- **Risk scoring v2** — BLOCKER issues now set a minimum HIGH severity floor; CRITICAL issues set minimum MEDIUM
-- **VS Code Extension** — full-featured editor integration with Pro tier (auto-review, apply fix, trends dashboard)
-- **Notifications** — Slack & Teams now available in both CLI and VS Code extension
-- **Bug fix** — Security issues are now correctly detected and classified (stale prefix was preventing detection)
-- **License** — switched to proprietary license
+- **Generate Tests** — generate test cases from JIRA acceptance criteria in the VS Code extension (Cmd+Shift+P → IRA: Generate Tests)
+- **Review Current File** — review the currently open file without needing a PR (Cmd+Shift+P → IRA: Review Current File)
+- **CLI version fix** — CLI now correctly reports 1.0.1 (was showing 0.7.0)
+- **Feature table** — updated to reflect all available features
 
 ## What can IRA do?
 
@@ -410,6 +408,8 @@ code --install-extension ira-review.ira-review-vscode
 ### Features
 
 - **Zero config** - uses your existing GitHub Copilot subscription (or bring OpenAI, Anthropic, Ollama)
+- **Review Current File** - review the currently open file without a PR
+- **Generate Tests** - generate test cases from JIRA acceptance criteria
 - **Diagnostics** - issues show up as squiggly lines with severity levels
 - **CodeLens** - inline annotations on affected lines
 - **TreeView** - sidebar panel with all issues grouped by file
