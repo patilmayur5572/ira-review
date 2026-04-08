@@ -7,47 +7,53 @@ import * as vscode from 'vscode';
 import { JiraClient, generateTestCases, createAIProvider, detectFramework } from 'ira-review';
 import type { TestFramework, AIProviderType } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
-import { AuthProvider } from '../services/authProvider';
+import { resolveJiraCredentials, resolveAiApiKey } from '../utils/credentialPrompts';
+import { suppressAutoReviewPopup } from '../services/autoReviewer';
+import * as msg from '../utils/messages';
+import * as cp from 'child_process';
 
 const TEST_FRAMEWORKS: TestFramework[] = ['jest', 'vitest', 'mocha', 'playwright', 'cypress', 'gherkin', 'pytest', 'junit'];
 
 export async function generateTests(): Promise<void> {
   const jiraKey = await vscode.window.showInputBox({
-    prompt: 'Enter the JIRA ticket key',
-    placeHolder: 'e.g. PROJ-123',
+    prompt: msg.prompts.jiraTicket,
+    placeHolder: msg.prompts.jiraTicketPlaceholder,
   });
 
   if (!jiraKey) return;
+
+  const normalizedKey = jiraKey.trim().toUpperCase();
 
   const config = vscode.workspace.getConfiguration('ira');
   const defaultFramework = config.get<string>('testFramework', 'jest');
 
   const frameworkPick = await vscode.window.showQuickPick(
     TEST_FRAMEWORKS.map(f => ({ label: f, picked: f === defaultFramework })),
-    { placeHolder: 'Select a test framework' },
+    { placeHolder: msg.prompts.testFramework },
   );
 
   if (!frameworkPick) return;
 
   const testFramework = frameworkPick.label as TestFramework;
 
-  const jiraUrl = config.get<string>('jiraUrl', '');
-  const jiraEmail = config.get<string>('jiraEmail', '');
-  const jiraToken = await AuthProvider.getInstance().getJiraToken();
-
-  if (!jiraUrl || !jiraEmail || !jiraToken) {
-    vscode.window.showErrorMessage('IRA: JIRA configuration is missing. Go to Settings → IRA to set jiraUrl, jiraEmail, and jiraToken.');
-    return;
-  }
+  const jiraCreds = await resolveJiraCredentials();
+  if (!jiraCreds) return;
 
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'IRA: Generating Tests...', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: msg.progress.generateTests(testFramework), cancellable: false },
     async () => {
+      suppressAutoReviewPopup(true);
       try {
-        const jira = new JiraClient({ baseUrl: jiraUrl, email: jiraEmail, token: jiraToken });
-        const issue = await jira.fetchIssue(jiraKey);
+        const jira = new JiraClient({ baseUrl: jiraCreds.url, email: jiraCreds.email, token: jiraCreds.token, type: jiraCreds.type });
+        const issue = await jira.fetchIssue(normalizedKey);
 
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
+          ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+          : undefined;
+        const fallbackDir = activeFileDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const workspaceRoot = fallbackDir
+          ? await execGit('git rev-parse --show-toplevel', fallbackDir).catch(() => fallbackDir)
+          : undefined;
         let framework: Awaited<ReturnType<typeof detectFramework>> = null;
         if (workspaceRoot) {
           try {
@@ -64,11 +70,8 @@ export async function generateTests(): Promise<void> {
           const copilot = new CopilotAIProvider();
           result = await generateTestCases(issue, testFramework, copilot, framework);
         } else {
-          const aiApiKey = await AuthProvider.getInstance().getAiApiKey();
-          if (!aiApiKey) {
-            vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
-            return;
-          }
+          const aiApiKey = await resolveAiApiKey();
+          if (!aiApiKey) return;
           const provider = createAIProvider({
             provider: aiProvider as AIProviderType,
             apiKey: aiApiKey,
@@ -78,9 +81,7 @@ export async function generateTests(): Promise<void> {
         }
 
         if (result.testCases.length === 0) {
-          vscode.window.showWarningMessage(
-            `IRA: No test cases generated for ${jiraKey}.${result.parseWarning ? ` (${result.parseWarning})` : ''}`,
-          );
+          vscode.window.showWarningMessage(msg.testGenEmpty(normalizedKey, result.parseWarning));
           return;
         }
 
@@ -107,8 +108,19 @@ export async function generateTests(): Promise<void> {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('IRA: Generate Tests error:', message);
-        vscode.window.showErrorMessage(`IRA: Failed to generate tests — ${message}`);
+        vscode.window.showErrorMessage(msg.testGenFailed(message));
+      } finally {
+        suppressAutoReviewPopup(false);
       }
     },
   );
+}
+
+function execGit(command: string, cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cp.exec(command, { cwd }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout.trim());
+    });
+  });
 }

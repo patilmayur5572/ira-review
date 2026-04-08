@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { loadRulesFile, filterRulesByPath, formatRulesForPrompt } from "../rulesFile.js";
+import { loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "../rulesFile.js";
 import type { IraRule } from "../rulesFile.js";
 import * as fs from "node:fs";
 
@@ -210,5 +210,95 @@ describe("formatRulesForPrompt", () => {
     expect(result).toContain("Severity: MAJOR");
     expect(result).not.toContain("BAD:");
     expect(result).not.toContain("GOOD:");
+  });
+});
+
+describe("loadSensitiveAreas", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns empty array when no file exists", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    expect(loadSensitiveAreas("/fake")).toEqual([]);
+  });
+
+  it("returns empty array when no sensitiveAreas key", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ rules: [] }));
+    expect(loadSensitiveAreas("/fake")).toEqual([]);
+  });
+
+  it("loads string paths and derives labels", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      rules: [],
+      sensitiveAreas: ["src/services/payment/**", "**/auth/**"],
+    }));
+    const result = loadSensitiveAreas("/fake");
+    expect(result).toHaveLength(2);
+    expect(result[0].glob).toBe("src/services/payment/**");
+    expect(result[0].label).toBe("payment");
+    expect(result[1].glob).toBe("**/auth/**");
+    expect(result[1].label).toBe("auth");
+  });
+
+  it("skips non-string entries", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      rules: [],
+      sensitiveAreas: ["src/payment/**", 123, null, { glob: "test" }],
+    }));
+    const result = loadSensitiveAreas("/fake");
+    expect(result).toHaveLength(1);
+  });
+
+  it("deduplicates entries", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      rules: [],
+      sensitiveAreas: ["src/auth/**", "src/auth/**", "src/payment/**"],
+    }));
+    const result = loadSensitiveAreas("/fake");
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("matchSensitiveArea", () => {
+  const areas = [
+    { glob: "src/services/payment/**", label: "payment" },
+    { glob: "**/auth/**", label: "auth" },
+  ];
+
+  it("matches prefix/** pattern", () => {
+    const match = matchSensitiveArea(areas, "src/services/payment/charge.ts");
+    expect(match).not.toBeNull();
+    expect(match!.label).toBe("payment");
+  });
+
+  it("matches **/file pattern", () => {
+    const areasWithSuffix = [
+      { glob: "src/services/payment/**", label: "payment" },
+      { glob: "**/jwt.ts", label: "jwt" },
+    ];
+    const match = matchSensitiveArea(areasWithSuffix, "src/middleware/auth/jwt.ts");
+    expect(match).not.toBeNull();
+    expect(match!.label).toBe("jwt");
+  });
+
+  it("returns null for non-matching paths", () => {
+    expect(matchSensitiveArea(areas, "src/utils/helpers.ts")).toBeNull();
+  });
+
+  it("returns first match when multiple match", () => {
+    const match = matchSensitiveArea(areas, "src/services/payment/auth/handler.ts");
+    expect(match!.label).toBe("payment");
+  });
+});
+
+describe("formatSensitiveAreaForPrompt", () => {
+  it("formats with label and glob", () => {
+    const result = formatSensitiveAreaForPrompt({ glob: "src/payment/**", label: "payment" });
+    expect(result).toContain("Sensitive Area");
+    expect(result).toContain("payment");
+    expect(result).toContain("extra scrutiny");
   });
 });

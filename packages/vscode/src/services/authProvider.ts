@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as msg from '../utils/messages';
 
 export type ScmAuthProvider = 'github' | 'github-enterprise' | 'bitbucket';
 
@@ -95,7 +96,7 @@ export class AuthProvider implements vscode.Disposable {
       this.secrets.delete(AI_API_SECRET_KEY),
     ]);
     this._onDidChangeSession.fire(null);
-    vscode.window.showInformationMessage('IRA: Signed out.');
+    vscode.window.showInformationMessage(msg.signedOut());
   }
 
   /**
@@ -107,9 +108,20 @@ export class AuthProvider implements vscode.Disposable {
     let scmProvider: 'github' | 'bitbucket' =
       vscode.workspace.getConfiguration('ira').get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
 
+    // Resolve actual git root from active editor (workspaceRoot might be a parent folder)
+    let gitCwd = workspaceRoot;
+    try {
+      const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
+        ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+        : undefined;
+      if (activeFileDir) {
+        gitCwd = await execShell('git rev-parse --show-toplevel', activeFileDir);
+      }
+    } catch { /* ignore */ }
+
     // Auto-detect from git remote
     try {
-      const remoteUrl = await execShell('git remote get-url origin', workspaceRoot);
+      const remoteUrl = await execShell('git remote get-url origin', gitCwd);
       if (remoteUrl.includes('bitbucket')) {
         scmProvider = 'bitbucket';
       }
@@ -186,10 +198,10 @@ export class AuthProvider implements vscode.Disposable {
         accessToken: session.accessToken,
         accountName: session.account.label,
       });
-      vscode.window.showInformationMessage(`IRA: Signed in as ${session.account.label}`);
+      vscode.window.showInformationMessage(msg.signedIn(session.account.label));
       return scmSession;
     } catch {
-      vscode.window.showErrorMessage('IRA: GitHub sign-in was cancelled or failed.');
+      vscode.window.showErrorMessage(msg.authCancelled('GitHub'));
       return null;
     }
   }
@@ -223,8 +235,8 @@ export class AuthProvider implements vscode.Disposable {
 
   private async signInBitbucket(): Promise<ScmSession | null> {
     const token = await vscode.window.showInputBox({
-      prompt: 'Enter your Bitbucket access token (read-only scope recommended)',
-      placeHolder: 'ATBB…',
+      prompt: 'Paste your Bitbucket App Password (Bitbucket → Settings → App Passwords → Create)',
+      placeHolder: 'ATBB...',
       password: true,
       ignoreFocusOut: true,
     });
@@ -237,7 +249,7 @@ export class AuthProvider implements vscode.Disposable {
       accessToken: token,
       accountName: 'Bitbucket',
     });
-    vscode.window.showInformationMessage('IRA: Bitbucket token saved securely.');
+    vscode.window.showInformationMessage(msg.tokenSaved('Bitbucket'));
     return session;
   }
 

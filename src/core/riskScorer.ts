@@ -7,6 +7,7 @@ interface RiskInput {
   filteredIssues: SonarIssue[];
   complexity: ComplexityReport | null;
   filesChanged: number;
+  sensitiveFileMultiplier?: number;
 }
 
 export function calculateRisk(input: RiskInput): RiskReport {
@@ -73,6 +74,20 @@ export function calculateRisk(input: RiskInput): RiskReport {
       score: 0,
       maxScore: 10,
       detail: "No complexity data available",
+    });
+  }
+
+  // Factor 6: Sensitive area amplification (0-15 points)
+  if (input.sensitiveFileMultiplier && input.sensitiveFileMultiplier > 1) {
+    const issueCount = input.filteredIssues.length;
+    const sensitiveBoost = issueCount > 0 ? Math.min(issueCount * 5, 15) : 0;
+    factors.push({
+      name: "Sensitive Area",
+      score: sensitiveBoost,
+      maxScore: 15,
+      detail: issueCount > 0
+        ? `${issueCount} issue${issueCount !== 1 ? 's' : ''} found in sensitive code (severity amplified)`
+        : "Sensitive area — no issues found",
     });
   }
 

@@ -17,7 +17,7 @@ export { trackRequirementCompletion } from "./core/requirementTracker.js";
 export { buildSummary } from "./core/summaryBuilder.js";
 
 // AI
-export { createAIProvider } from "./ai/aiClient.js";
+export { createAIProvider, parseAIResponse } from "./ai/aiClient.js";
 export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "./ai/promptBuilder.js";
 
 // SCM
@@ -37,7 +37,7 @@ export { withRetry, fetchWithTimeout, RetryableError, TimeoutError, isRetryable 
 export { mapWithConcurrency } from "./utils/concurrency.js";
 export { resolveConfigFromEnv } from "./utils/env.js";
 export { loadConfigFile } from "./utils/configFile.js";
-export { loadRulesFile, filterRulesByPath, formatRulesForPrompt } from "./utils/rulesFile.js";
+export { loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "./utils/rulesFile.js";
 
 // Types
 export type { IraConfig, SonarConfig, BitbucketConfig, GitHubConfig, AIConfig, JiraConfig, NotificationConfig, SCMProviderType, AIProviderType } from "./types/config.js";
@@ -57,4 +57,4 @@ export type { RiskReport, RiskFactor, RiskLevel, ComplexityReport, ComplexityMet
 export type { JiraIssue, AcceptanceValidationResult, AcceptanceCriterion, TestFramework, GeneratedTestCase, TestGenerationResult, RequirementStatus, RequirementCompletionResult } from "./types/jira.js";
 export type { RetryOptions } from "./utils/retry.js";
 export type { FlatConfig } from "./utils/env.js";
-export type { IraRule, IraRulesFile } from "./utils/rulesFile.js";
+export type { IraRule, IraRulesFile, SensitiveArea } from "./utils/rulesFile.js";

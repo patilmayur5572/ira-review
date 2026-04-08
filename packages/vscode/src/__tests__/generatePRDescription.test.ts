@@ -7,12 +7,18 @@ import { AuthProvider } from '../services/authProvider';
 // Mock child_process
 vi.mock('child_process', () => ({
   exec: vi.fn((cmd: string, opts: any, cb: Function) => {
-    if (cmd.includes('branch --show-current')) {
+    if (cmd.includes('rev-parse --show-toplevel')) {
+      cb(null, '/test/workspace');
+    } else if (cmd.includes('branch --show-current')) {
       cb(null, 'feature/PROJ-123-add-feature');
     } else if (cmd.includes('remote get-url')) {
       cb(null, 'https://github.com/owner/repo.git');
-    } else if (cmd.includes('diff main...HEAD')) {
+    } else if (cmd.includes('symbolic-ref')) {
+      cb(null, 'refs/remotes/origin/main');
+    } else if (cmd.includes('git diff')) {
       cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+    } else if (cmd.includes('rev-parse --verify')) {
+      cb(null, 'main');
     } else {
       cb(null, '');
     }
@@ -46,7 +52,7 @@ describe('generatePRDescription', () => {
   it('should show error if no workspace', async () => {
     (vscode.workspace as any).workspaceFolders = undefined;
     await generatePRDescription();
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('IRA: No workspace folder open.');
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder open — open a project first');
   });
 
   it('should show quick pick with two options', async () => {
