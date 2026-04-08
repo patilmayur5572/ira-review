@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import './setup';
 import * as vscode from 'vscode';
 import { generatePRDescription } from '../commands/generatePRDescription';
+import { AuthProvider } from '../services/authProvider';
 
 // Mock child_process
 vi.mock('child_process', () => ({
@@ -29,6 +30,16 @@ vi.mock('../providers/copilotAIProvider', () => {
 describe('generatePRDescription', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset and reinitialize AuthProvider singleton so generatePRDescription can use it
+    (AuthProvider as any).instance = undefined;
+    AuthProvider.init({
+      secrets: {
+        get: vi.fn().mockResolvedValue(undefined),
+        store: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(undefined),
+        onDidChange: vi.fn(),
+      },
+    } as unknown as vscode.ExtensionContext);
     (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/test/workspace' } }];
   });
 

@@ -13,6 +13,7 @@ import { IraCodeLensProvider } from '../providers/codeLensProvider';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { setLastResult } from '../extension';
 import { ReviewHistoryStore } from '../services/reviewHistoryStore';
+import { AuthProvider } from '../services/authProvider';
 import * as cp from 'child_process';
 
 export async function reviewPR(
@@ -42,73 +43,14 @@ export async function reviewPR(
 
         const repoInfo = await detectRepo(workspaceRoot);
 
-        // Auto-detect SCM provider from git remote URL (fallback to settings)
-        let scmProvider = config.get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
-        const remoteUrl = await execGit('git remote get-url origin', workspaceRoot).catch(() => '');
-        if (remoteUrl.includes('bitbucket')) {
-          scmProvider = 'bitbucket';
+        // Auth: resolve token via AuthProvider (auto-detects SCM, OAuth → SecretStorage → settings PAT)
+        const scmSession = await AuthProvider.getInstance().resolveScmSession(workspaceRoot);
+        if (!scmSession) {
+          vscode.window.showErrorMessage('IRA: Authentication required. Run "IRA: Sign In" from the command palette.');
+          return;
         }
-        // Auth: try settings token → GHE auth → github.com auth
-        let scmToken = '';
-        if (scmProvider === 'github') {
-          // 1. Check settings for manual token
-          scmToken = config.get<string>('githubToken', '');
-
-          // 2. Try VS Code built-in auth (GHE first, then github.com)
-          if (!scmToken) {
-            const isGHE = repoInfo.baseUrl !== undefined || config.get<string>('githubUrl', '') !== '';
-
-            if (isGHE) {
-              // Try GHE auth first (uses your existing Copilot GHE sign-in)
-              try {
-                const session = await vscode.authentication.getSession('github-enterprise', ['repo'], { createIfNone: false });
-                if (session) {
-                  scmToken = session.accessToken;
-                }
-              } catch {
-                // GHE auth not available, will try manual token below
-              }
-            }
-
-            // Try github.com auth if GHE didn't work
-            if (!scmToken) {
-              try {
-                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
-                if (session) {
-                  scmToken = session.accessToken;
-                }
-              } catch {
-                // Not available
-              }
-            }
-
-            // 3. If still no token, prompt to sign in or set token
-            if (!scmToken) {
-              const choice = await vscode.window.showWarningMessage(
-                'IRA: No GitHub token found. Sign in or set a token in settings.',
-                'Sign in to GHE',
-                'Sign in to GitHub',
-                'Open Settings',
-              );
-              if (choice === 'Sign in to GHE') {
-                const session = await vscode.authentication.getSession('github-enterprise', ['repo'], { createIfNone: true });
-                scmToken = session.accessToken;
-              } else if (choice === 'Sign in to GitHub') {
-                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
-                scmToken = session.accessToken;
-              } else {
-                vscode.commands.executeCommand('workbench.action.openSettings', 'ira.githubToken');
-                return;
-              }
-            }
-          }
-        } else {
-          scmToken = config.get<string>('bitbucketToken', '');
-          if (!scmToken) {
-            vscode.window.showErrorMessage('IRA: Bitbucket token not configured. Go to Settings → IRA → Bitbucket Token.');
-            return;
-          }
-        }
+        const scmProvider = scmSession.provider === 'github-enterprise' ? 'github' : scmSession.provider;
+        const scmToken = scmSession.accessToken;
 
         // Use GHE base URL from settings or auto-detected
         const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
@@ -116,9 +58,11 @@ export async function reviewPR(
         const aiProvider = config.get<string>('aiProvider', 'copilot');
         const useCopilot = aiProvider === 'copilot';
 
+        const authInstance = AuthProvider.getInstance();
+
         // If not using Copilot, require an API key
         if (!useCopilot) {
-          const aiApiKey = config.get<string>('aiApiKey', '');
+          const aiApiKey = await authInstance.getAiApiKey();
           if (!aiApiKey) {
             vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
             return;
@@ -139,7 +83,7 @@ export async function reviewPR(
               : { workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken },
             ai: {
               provider: aiProvider as IraConfig['ai']['provider'],
-              apiKey: config.get<string>('aiApiKey', ''),
+              apiKey: await authInstance.getAiApiKey(),
               model: config.get<string>('aiModel', 'gpt-4o-mini'),
             },
             pullRequestId: prNumber,
@@ -152,7 +96,7 @@ export async function reviewPR(
           if (sonarUrl) {
             iraConfig.sonar = {
               baseUrl: sonarUrl,
-              token: config.get<string>('sonarToken', ''),
+              token: await authInstance.getSonarToken(),
               projectKey: config.get<string>('sonarProjectKey', ''),
             };
           }
@@ -162,7 +106,7 @@ export async function reviewPR(
             iraConfig.jira = {
               baseUrl: jiraUrl,
               email: config.get<string>('jiraEmail', ''),
-              token: config.get<string>('jiraToken', ''),
+              token: await authInstance.getJiraToken(),
             };
           }
 

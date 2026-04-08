@@ -41,7 +41,7 @@ vi.mock('vscode', () => ({
   CodeLens: class { constructor(public range: any, public command?: any) {} },
   LanguageModelChatMessage: { User: (text: string) => ({ role: 'user', text }) },
   lm: { selectChatModels: vi.fn() },
-  authentication: { getSession: vi.fn() },
+  authentication: { getSession: vi.fn(), onDidChangeSessions: vi.fn(() => ({ dispose: vi.fn() })) },
   ProgressLocation: { Notification: 1 },
   env: { machineId: 'test-machine-id', openExternal: vi.fn() },
 }));
