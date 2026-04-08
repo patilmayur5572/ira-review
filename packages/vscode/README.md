@@ -1,189 +1,213 @@
-# IRA - Intelligent Review Assistant
+# Know If Your PR Will Be Rejected - Before You Push
 
-![IRA Review](docs/images/hero-banner.png)
+Every team has the same problem. PRs go up, reviewers leave 12 comments, half of them are things the author already knew but forgot. The PR goes back, gets reworked, re-reviewed, and everyone loses a day.
 
-**AI code reviews inside your editor. Privacy-first, runs locally. Zero plaintext secrets.**
+**IRA is your first reviewer before humans get involved.** It reviews the full PR diff, gives you a risk score, and shows every issue inline in your editor before you push.
+
+For individual devs: fewer rejections, faster approvals. For tech leads: fewer review rounds, less time spent on obvious catches.
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/ira-review.ira-review-vscode?label=VS%20Code%20Marketplace&color=blue)](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
 
+```
+IRA: Found 3 issues (Risk: MEDIUM - 47/100)
+
+src/routes/todos.ts
+  [BLOCKER] SQL injection risk - user input passed directly to query
+  [MAJOR]   Missing database index on frequently queried column
+
+src/middleware/auth.ts
+  [CRITICAL] JWT secret hardcoded - move to environment variable
+
+JIRA AC Validation (PROJ-1234):
+  AC 1: User can create a todo item        COVERED
+  AC 2: Input is validated before save      NOT COVERED
+  AC 3: Error returns 422 with details      COVERED
+```
+
 ---
 
-## 🔒 Security First - Your Tokens Are Safe
+## The Feature No Other Extension Has: JIRA Ticket vs PR Validation
 
-IRA stores **every secret in your OS-native keychain**, not in `settings.json`.
+Your reviewer opens the PR and asks: "Does this actually cover AC #3?"
 
-| Secret | How it's stored |
+IRA answers that before they have to ask. It pulls the JIRA ticket from your branch name, reads the acceptance criteria, diffs them against your code changes, and tells you exactly which ACs are covered and which are not.
+
+No other VS Code extension, no CI bot, and no AI tool does this. This alone saves entire review rounds.
+
+![IRA inline diagnostics and TreeView](docs/images/vscode-review-diagnostics.png)
+
+---
+
+## What IRA Does
+
+1. **Catches bugs that linters miss** - security issues, logic gaps, and edge cases across your entire PR diff
+2. **Enforces your team's rules** - commit a `.ira-rules.json` and IRA checks every PR against your standards automatically
+3. **Validates your code against the JIRA ticket** - checks whether your changes actually satisfy the acceptance criteria
+4. **Scores the risk** (0-100) so you know if your PR is safe to submit or needs more work
+5. **Shows issues inline in your editor** - squiggly lines, CodeLens, and sidebar panel, exactly like TypeScript errors
+6. **Generates PR descriptions** from your diff and JIRA context so your PRs stop showing up with one-line descriptions
+
+All of this runs locally. Your code never leaves your machine.
+
+---
+
+## What Changes When You Use IRA
+
+**Before IRA:**
+- Push PR, wait 2 days for review
+- Get 12 comments, half of them are things you already knew but forgot
+- Reviewer asks "does this match the AC?" and you scramble to re-read the ticket
+- Rework, re-push, wait again
+- Repeat until everyone is annoyed
+
+**After IRA:**
+- Run `IRA: Review Current PR` before pushing
+- Fix the 3 issues IRA found in 10 minutes
+- PR description is already written, JIRA ACs are validated
+- Reviewer sees a clean PR, leaves one minor comment, approves
+- You look like you have your act together
+
+The difference is not the tool. The difference is that your reviewer sees a PR that has already been reviewed.
+
+---
+
+## "I Already Have GitHub Copilot. Why Do I Need This?"
+
+Copilot helps you write code. IRA tells you if that code will survive review.
+
+| | Copilot | IRA |
+|---|---|---|
+| **Job** | Write code faster | Review code before humans do |
+| **When** | While you type | After you finish, before you push |
+| **Scope** | Current line/function | Entire PR diff across all files |
+| **JIRA awareness** | None | Validates code against acceptance criteria |
+| **Risk scoring** | None | 0-100 risk score with breakdown |
+| **SonarQube** | None | Enriches reviews with static analysis data |
+| **Output** | Code suggestions | Inline diagnostics, CodeLens, risk badge |
+
+They are complementary. Use Copilot to write. Use IRA to review. IRA uses your existing Copilot subscription as its default AI backend, so there is nothing extra to configure.
+
+---
+
+## Quick Start (under 60 seconds)
+
+1. Install IRA from the VS Code Marketplace
+2. Open a project with a GitHub or Bitbucket remote
+3. `Cmd+Shift+P` > `IRA: Review Current PR`
+4. Enter your PR number
+5. Issues appear inline in your editor
+
+That is it. If you have GitHub Copilot, IRA uses it automatically. No API keys, no config files, no setup wizard.
+
+**Bitbucket?** IRA auto-detects it from your git remote. It will ask for your token once and store it in the OS keychain.
+
+**SonarQube or JIRA?** Optional. Set the URL in settings, and IRA prompts for the token on first use. Stored securely, never in plaintext.
+
+---
+
+## Custom Review Rules
+
+Your team has standards that no linter enforces. "Always use parameterized queries." "Never log PII." "API routes must validate request bodies." These rules exist in a wiki somewhere, and every reviewer checks for them manually.
+
+Put them in `.ira-rules.json` at your repo root. IRA enforces them on every review.
+
+```json
+{
+  "rules": [
+    {
+      "message": "Use parameterized queries for all SQL operations",
+      "bad": "db.query(`SELECT * FROM users WHERE id = ${userId}`)",
+      "good": "db.query('SELECT * FROM users WHERE id = $1', [userId])",
+      "severity": "CRITICAL",
+      "paths": ["src/db/**", "src/api/**"]
+    },
+    {
+      "message": "Never use console.log in production code",
+      "severity": "MINOR"
+    }
+  ]
+}
+```
+
+Run `IRA: Init Rules File` from the command palette to scaffold one. IRA ships a JSON Schema, so you get autocomplete and validation as you edit. Rules are scoped by `paths` (optional), capped at 30 per file, and enforced in every review surface with no license gating.
+
+---
+
+## Where IRA Pays for Itself
+
+**Friday PR, Monday surprise.** You push before the weekend. Monday morning there are 14 comments. IRA catches 11 of those before you push. The other 3 are style opinions. You cannot automate taste, but you can automate catching a missing null check.
+
+**The PR that broke production.** A SQL query was vulnerable, and the review missed it. IRA flags injection risks, hardcoded secrets, missing input validation, and auth bypasses. It catches what the review checklist was supposed to catch.
+
+**3 rounds of review per PR.** Junior devs submit PRs that bounce back repeatedly. Give them IRA. The obvious issues get caught before they reach your desk.
+
+---
+
+## Security
+
+| Secret | Storage |
 |---|---|
-| GitHub / GHE token | VS Code OAuth, stored in OS keychain (same mechanism as GitHub Copilot) |
+| GitHub / GHE token | VS Code OAuth, stored in OS keychain (same as Copilot) |
 | Bitbucket token | Prompted once via masked input, stored in OS keychain |
 | SonarQube token | OS keychain via SecretStorage |
 | JIRA token | OS keychain via SecretStorage |
 | AI API key | OS keychain via SecretStorage |
 
-- 🚫 No tokens in plaintext `settings.json` files
-- 🔄 GitHub tokens auto-refresh. IRA detects session changes and invalidates stale tokens
-- 🧹 `IRA: Sign Out` wipes all secrets from the keychain in one command
-- 🤖 Copilot users need zero configuration. Uses your existing VS Code GitHub session
-- 🏢 Works with GitHub Enterprise (org admin approval may be needed for the OAuth app)
-- 📡 No cloud service, no telemetry, no token forwarding. Everything runs locally
-
-> **For your security team:** IRA runs 100% locally. Code and credentials never leave your machine. The authentication module is fully auditable with complete test coverage.
+No tokens in plaintext `settings.json`. GitHub tokens auto-refresh and IRA invalidates stale sessions automatically. `IRA: Sign Out` wipes all secrets from the keychain in one command. No cloud service, no telemetry, no token forwarding. Everything runs locally.
 
 ---
 
-## Features
+## Commands
 
-- 🔒 **Zero Plaintext Secrets** - all tokens stored in OS keychain via SecretStorage
-- 🔑 **One-Click GitHub OAuth** - sign in via VS Code's built-in OAuth. No PATs to manage
-- 🔍 **AI-Powered Code Reviews** - review PRs using GitHub Copilot, OpenAI, Anthropic, or Ollama (local)
-- 🎯 **Diagnostics** - issues show up as squiggly lines in your editor, just like TypeScript errors
-- 📝 **CodeLens** - inline annotations on affected lines so you don't miss anything
-- 🌳 **TreeView** - sidebar panel with all issues grouped by file
-- 🛡️ **Risk Score** - status bar badge showing the overall risk level of your PR
-- 🔗 **SonarQube + JIRA** - enrich reviews with static analysis and acceptance criteria validation
-- 📢 **Slack & Teams Notifications** - get notified after reviews with risk threshold filtering
-- 📋 **Generate PR Description** - AI-powered PR descriptions with JIRA ticket auto-detection from branch names
+All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux).
 
----
-
-## Setup Guide - GitHub
-
-![IRA Sign In via Command Palette](docs/images/vscode-sign-in.png)
-
-1. Install the extension from the VS Code Marketplace
-2. Open a project with a GitHub remote
-3. Run `IRA: Sign In` from the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
-4. Click "Sign in with GitHub" in the popup. VS Code handles the OAuth flow
-5. Run `IRA: Review Current PR` and enter your PR number
-6. Issues appear inline in your editor within seconds
-
-![IRA inline diagnostics and TreeView](docs/images/vscode-review-diagnostics.png)
-
-That's it. Copilot is the default AI provider, so no API key is needed.
-
-**GitHub Enterprise:** Works the same way. If your org has not approved the VS Code OAuth app, you can fall back to a PAT via `ira.githubToken` in settings.
-
-## Setup Guide - Bitbucket
-
-1. Install the extension from the VS Code Marketplace
-2. Open a project with a Bitbucket remote
-3. Run `IRA: Review Current PR` from the Command Palette
-4. IRA auto-detects Bitbucket from your git remote URL
-5. A masked input box appears: paste your Bitbucket access token (read-only scope)
-6. The token is stored in the OS keychain. You will not be asked again
-7. Issues appear inline in your editor within seconds
-
-![Bitbucket token stored securely](docs/images/vscode-bitbucket-token.png)
-
-**Bitbucket Server / Data Center:** Set `ira.bitbucketUrl` in settings to your server URL (e.g. `https://bitbucket.yourcompany.com`).
-
-## Optional Integrations
-
-All integrations are optional. IRA works with just GitHub/Bitbucket + Copilot out of the box.
-
-**SonarQube:**
-1. Set `ira.sonarUrl` to your SonarQube server URL in settings
-2. Set `ira.sonarProjectKey` in settings
-3. IRA will prompt you for the Sonar token on first use and store it securely in the OS keychain
-
-**JIRA:**
-1. Set `ira.jiraUrl` and `ira.jiraEmail` in settings
-2. IRA will prompt you for the JIRA token on first use and store it securely in the OS keychain
-
-**Alternative AI provider (OpenAI, Anthropic, Ollama):**
-1. Change `ira.aiProvider` in settings to `openai`, `anthropic`, or `ollama`
-2. IRA will prompt you for the API key on first use and store it securely in the OS keychain (not needed for Ollama)
+| Command | What it does |
+|---|---|
+| `IRA: Review Current PR` | Review all changed files in a pull request |
+| `IRA: Review Current File` | Review the active editor file |
+| `IRA: Generate PR Description` | Generate a PR description from the diff and JIRA context |
+| `IRA: Generate Tests` | Generate test cases from JIRA acceptance criteria |
+| `IRA: Init Rules File` | Scaffold a `.ira-rules.json` in the workspace root |
+| `IRA: Show Risk Score` | Display the risk score from the last review |
+| `IRA: Sign In (GitHub / Bitbucket)` | Authenticate with your SCM provider |
+| `IRA: Sign Out` | Clear all stored credentials from the OS keychain |
+| `IRA: Configure` | Open IRA settings |
+| `IRA: Activate Pro License` | Enter a Pro license key |
 
 ---
 
-## Example Output
+## Under the Hood
 
-```
-🔍 IRA: Found 3 issues (Risk: MEDIUM)
-
-src/routes/todos.ts
-  ⚠️ [IRA/security] SQL injection risk - user input not sanitized
-  ℹ️ [IRA/performance] Missing database index on frequently queried column
-
-src/middleware/auth.ts
-  🔴 [IRA/security] JWT secret hardcoded - use environment variable
-```
+- **AI Providers:** GitHub Copilot (default, zero config), OpenAI, Azure OpenAI, Anthropic, Ollama (fully local)
+- **SCM Providers:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
+- **Integrations:** SonarQube (static analysis enrichment), JIRA (acceptance criteria validation), Slack and Teams (review notifications)
 
 ---
 
 ## Free vs Pro
 
-| Feature                    | Free | Pro ($10/mo) |
-| -------------------------- | :--: | :----------: |
-| PR Reviews                 |  ✅  |      ✅      |
-| Copilot AI (zero config)   |  ✅  |      ✅      |
-| OpenAI / Anthropic / Ollama|  ✅  |      ✅      |
-| Diagnostics + CodeLens     |  ✅  |      ✅      |
-| TreeView + Risk Score      |  ✅  |      ✅      |
-| SonarQube Integration      |  ✅  |      ✅      |
-| JIRA AC Validation         |  ✅  |      ✅      |
-| Auto-review on Save        |  -   |      ✅      |
-| One-click Apply Fix        |  -   |      ✅      |
-| Review History + Trends    |  -   |      ✅      |
-| Post to PR (selective)     |  -   |      ✅      |
-| Custom Review Rules        |  -   |      ✅      |
-| Priority Support           |  -   |      ✅      |
+| Feature | Free | Pro ($10/mo) |
+|---|:---:|:---:|
+| PR Reviews + File Reviews | Yes | Yes |
+| Copilot AI (zero config) | Yes | Yes |
+| OpenAI / Anthropic / Ollama | Yes | Yes |
+| Inline Diagnostics + CodeLens | Yes | Yes |
+| TreeView + Risk Score | Yes | Yes |
+| Custom Review Rules | Yes | Yes |
+| SonarQube Integration | Yes | Yes |
+| JIRA AC Validation | Yes | Yes |
+| Test Case Generation | Yes | Yes |
+| PR Description Generation | Yes | Yes |
+| Slack / Teams Notifications | Yes | Yes |
+| Comment Deduplication | Yes | Yes |
+| Auto-review on Save | - | Yes |
+| One-click Apply Fix | - | Yes |
+| Review History + Trends | - | Yes |
 
 ---
-
-## Supported Providers
-
-### SCM
-
-| Provider                          | Status |
-| --------------------------------- | :----: |
-| GitHub                            |   ✅   |
-| GitHub Enterprise                 |   ✅   |
-| Bitbucket Cloud                   |   ✅   |
-| Bitbucket Server / Data Center    |   ✅   |
-
-### AI
-
-| Provider                          | Status |
-| --------------------------------- | :----: |
-| GitHub Copilot (zero config)      |   ✅   |
-| OpenAI                            |   ✅   |
-| Azure OpenAI                      |   ✅   |
-| Anthropic                         |   ✅   |
-| Ollama (local)                    |   ✅   |
-
----
-
-## Configuration
-
-Open **Settings > Extensions > IRA** or add these to your `settings.json`:
-
-| Setting              | Description                                        | Default     |
-| -------------------- | -------------------------------------------------- | ----------- |
-| `ira.aiProvider`     | AI backend: `copilot`, `openai`, `anthropic`, `ollama` | `copilot`   |
-| `ira.scmProvider`    | SCM platform: `github`, `bitbucket`                | auto-detect |
-| `ira.bitbucketUrl`   | Base URL for Bitbucket Server / Data Center        |             |
-| `ira.sonarUrl`       | SonarQube server URL                               |             |
-| `ira.sonarProjectKey`| SonarQube project key                              |             |
-| `ira.jiraUrl`        | JIRA instance URL for AC validation                |             |
-| `ira.jiraEmail`      | JIRA account email                                 |             |
-| `ira.slackWebhookUrl` | Slack webhook URL for review notifications        |             |
-| `ira.teamsWebhookUrl` | Teams webhook URL for review notifications        |             |
-| `ira.notifyMinRisk`   | Minimum risk level to trigger notifications: `low`, `medium`, `high`, `critical` | `low` |
-| `ira.notifyOnAcFail`  | Notify when JIRA acceptance criteria fail          | `false` |
-
-> **Note:** Token settings (`ira.sonarToken`, `ira.jiraToken`, `ira.aiApiKey`, `ira.githubToken`, `ira.bitbucketToken`) still exist for backward compatibility but are no longer recommended. Use `IRA: Sign In` to store tokens securely in the OS keychain instead.
-
----
-
-## Need CLI or CI integration?
-
-IRA also runs as a CLI tool and in CI pipelines (GitHub Actions, Bitbucket Pipelines). See the full setup guide:
-
-📖 **[github.com/patilmayur5572/ira-review](https://github.com/patilmayur5572/ira-review)**
 
 ## Links
 
-- **Marketplace**: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
-- **npm**: [npmjs.com/package/ira-review](https://www.npmjs.com/package/ira-review)
-- **Support**: patilmayur5572@gmail.com
+- [npm package](https://www.npmjs.com/package/ira-review) (CLI + CI integration)
+- [GitHub](https://github.com/patilmayur5572/ira-review) (docs, setup guides, CI examples)
+- Support: patilmayur5572@gmail.com

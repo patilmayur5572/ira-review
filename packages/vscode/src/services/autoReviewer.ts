@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { LicenseManager } from './licenseManager';
 import { AuthProvider } from './authProvider';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
-import { buildStandalonePrompt, parseStandaloneResponse, createAIProvider, detectFramework } from 'ira-review';
+import { buildStandalonePrompt, parseStandaloneResponse, createAIProvider, detectFramework, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
 import type { ReviewComment } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
 
@@ -76,7 +76,10 @@ async function runFileReview(
       }
     }
 
-    const prompt = buildStandalonePrompt(fileName, content, framework, null);
+    const rules = workspaceRoot ? loadRulesFile(workspaceRoot) : [];
+    const filteredRules = filterRulesByPath(rules, fileName);
+    const rulesSection = formatRulesForPrompt(filteredRules);
+    const prompt = buildStandalonePrompt(fileName, content, framework, null, rulesSection);
     const response = await aiProvider.review(prompt);
     const foundIssues = parseStandaloneResponse(response.explanation);
 

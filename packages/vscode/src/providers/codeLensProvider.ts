@@ -34,10 +34,10 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
         title: truncated,
         command: 'ira.showIssueDetail',
         arguments: [
-          `[${comment.rule}] ${comment.severity}\n\n` +
-          `📝 ${comment.aiReview.explanation}\n\n` +
-          `⚡ Impact: ${comment.aiReview.impact}\n\n` +
-          `💡 Fix: ${comment.aiReview.suggestedFix}`,
+          `# ${comment.rule} (${comment.severity})\n\n` +
+          `## Explanation\n\n${comment.aiReview.explanation}\n\n` +
+          `## Impact\n\n${comment.aiReview.impact}\n\n` +
+          `## Suggested Fix\n\n${comment.aiReview.suggestedFix}`,
         ],
       }));
 

@@ -101,7 +101,7 @@ class AnthropicProvider implements AIProvider {
           },
           body: JSON.stringify({
             model: this.model,
-            max_tokens: 1024,
+            max_tokens: 4096,
             system: SYSTEM_MESSAGE,
             messages: [{ role: "user", content: `${prompt}\n\nRespond with valid JSON only: {"explanation": "...", "impact": "...", "suggestedFix": "..."}` }],
           }),

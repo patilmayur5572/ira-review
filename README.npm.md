@@ -1,193 +1,146 @@
-# IRA - AI-Powered Code Reviews for Pull Requests
+# ira-review
 
-IRA reviews your pull requests using AI and posts inline comments with explanations, impact assessments, and suggested fixes.
+Review pull requests from your terminal. Get risk scores, inline comments, JIRA validation, and team rule enforcement before anyone else sees your code.
 
-**Works with any language.** Supports GitHub, GitHub Enterprise, Bitbucket Cloud, and Bitbucket Server/Data Center.
+```bash
+npx ira-review review --pr 42 --scm-provider github \
+  --github-token "$GITHUB_TOKEN" --github-repo owner/repo \
+  --ai-api-key "$OPENAI_API_KEY" --dry-run
+```
 
-> 🆕 **Also available as a [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)** - AI reviews right inside your editor with zero-config Copilot support.
+No install required. Drop `--dry-run` to post comments directly on the PR. For Bitbucket, replace the GitHub flags with `--bitbucket-token` and `--repo`.
 
-## 🔒 Security First - No Secret Ever Touches Disk in Plaintext
+---
 
-| Where | How secrets are stored |
+## What You Get
+
+```
+IRA: Found 3 issues (Risk: MEDIUM - 47/100)
+
+src/routes/todos.ts
+  [BLOCKER]  SQL injection risk - user input passed directly to query
+  [MAJOR]    Missing database index on frequently queried column
+
+src/middleware/auth.ts
+  [CRITICAL] JWT secret hardcoded - move to environment variable
+
+JIRA AC Validation (PROJ-1234):          # when --jira-ticket is provided
+  [PASS] User can create a todo item
+  [FAIL] Input is validated before save
+  [PASS] Error returns 422 with details
+```
+
+Each issue is posted as an inline comment on the exact PR line with explanation, impact, and suggested fix.
+
+**Features:**
+
+- Risk scoring (0-100) with severity breakdown and PR labels
+- Inline AI comments with explanation, impact, and suggested fix
+- JIRA acceptance criteria validation with per-criterion pass/fail
+- Custom team review rules via `.ira-rules.json` (see below)
+- Test case generation from JIRA tickets (Jest, Vitest, Playwright, etc.)
+- Comment deduplication across re-runs
+- Slack and Teams notifications with risk threshold filtering
+
+---
+
+## Custom Review Rules
+
+Commit a `.ira-rules.json` to your repo root. Rules are injected into the AI prompt alongside the diff. No extra API calls, no separate pass.
+
+```json
+{
+  "rules": [
+    {
+      "message": "Use parameterized queries for all SQL operations",
+      "severity": "CRITICAL",
+      "paths": ["src/db/**", "src/api/**"]
+    },
+    {
+      "message": "Never use console.log in production code",
+      "bad": "console.log('User:', user);",
+      "good": "logger.info('User created', { userId: user.id });",
+      "severity": "MINOR"
+    }
+  ]
+}
+```
+
+- `message` + `severity` required. `bad`/`good` examples and `paths` are optional.
+- Rules without `paths` apply to all files. Rules with `paths` match only those directories.
+- Maximum 30 rules. Deterministic checks (naming, formatting) belong in ESLint.
+- Invalid rules are skipped with a warning, not a crash.
+- No license gating. Works in CLI, CI/CD, and VS Code extension.
+
+---
+
+## Use Cases
+
+**Pre-push check (local dev):**
+```bash
+npx ira-review review --pr 42 --scm-provider github \
+  --github-token "$GITHUB_TOKEN" --github-repo owner/repo \
+  --ai-api-key "$OPENAI_API_KEY" --dry-run
+```
+Review in your terminal before pushing. Nothing gets posted.
+
+**CI gate (GitHub Actions):**
+```yaml
+- run: |
+    npx ira-review review \
+      --pr ${{ github.event.pull_request.number }} \
+      --scm-provider github \
+      --github-token ${{ secrets.GITHUB_TOKEN }} \
+      --github-repo ${{ github.repository }} \
+      --no-config-file
+  env:
+    IRA_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
+
+**CI gate (Bitbucket Pipelines):**
+```yaml
+- step:
+    name: AI Code Review
+    script:
+      - npx ira-review review
+          --pr $BITBUCKET_PR_ID
+          --repo $BITBUCKET_REPO_FULL_NAME
+          --no-config-file
+    environment:
+      IRA_AI_API_KEY: $OPENAI_API_KEY
+      IRA_BITBUCKET_TOKEN: $BB_TOKEN
+```
+
+---
+
+## Add Integrations
+
+All optional. IRA works with just an SCM token and an AI key.
+
+| What you want | Flags to add |
 |---|---|
-| **CLI** | Environment variables - read from `IRA_*` env vars at runtime. Never written to disk |
-| **CI Pipelines** | Your CI secrets manager - GitHub Actions secrets, Jenkins credentials, HashiCorp Vault, Azure Key Vault |
-| **VS Code Extension** | OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret) via SecretStorage |
+| JIRA validation | `--jira-url` `--jira-email` `--jira-token` `--jira-ticket PROJ-123` |
+| SonarQube enrichment | `--sonar-url` `--sonar-token` `--project-key my-project` |
+| Test generation | `--generate-tests --test-framework vitest` |
+| Slack notifications | `--slack-webhook https://hooks.slack.com/services/xxx` |
+| Teams notifications | `--teams-webhook https://outlook.office.com/webhook/xxx` |
+| Only notify on high risk | `--notify-min-risk high` |
+| Use Anthropic | `--ai-provider anthropic` |
+| Use Ollama (free, local) | `--ai-provider ollama` |
 
-- No cloud service, no telemetry, no analytics. Code and tokens never leave your infrastructure
-- Config files (`.irarc.json`) block token fields by design
-- All reviews run locally on your machine or CI runner
-
-## Quick Start
-
-![IRA CLI review output](docs/images/cli-review-output.png)
-
-### CLI with GitHub
-
-```bash
-npx ira-review review \
-  --pr 42 \
-  --scm-provider github \
-  --github-token 'ghp_xxxxx' \
-  --github-repo owner/repo \
-  --ai-api-key 'sk-xxxxx' \
-  --dry-run
-```
-
-Drop `--dry-run` to post comments on the PR.
-
-### CLI with Bitbucket
-
-```bash
-npx ira-review review \
-  --pr 42 \
-  --bitbucket-token 'bb_xxxxx' \
-  --repo my-workspace/my-repo \
-  --ai-api-key 'sk-xxxxx' \
-  --dry-run
-```
-
-**For Bitbucket Server / Data Center:**
-```bash
-npx ira-review review \
-  --pr 42 \
-  --bitbucket-token 'bb_xxxxx' \
-  --repo my-workspace/my-repo \
-  --bitbucket-url https://bitbucket.yourcompany.com \
-  --ai-api-key 'sk-xxxxx'
-```
+---
 
 ## Install
 
 ```bash
-npx ira-review review --help            # no install needed
-npm install -g ira-review                # or install globally
-npm install --save-dev ira-review        # or add to your project
+npx ira-review review --help       # no install needed
+npm install -g ira-review           # or install globally
+npm install --save-dev ira-review   # or add to your project
 ```
-
-## What IRA posts on your PR
-
-```
-🔍 IRA Review - IRA/security (CRITICAL)
-
-> User input used directly in SQL query without sanitization.
-
-Explanation: The username parameter is concatenated into a SQL string,
-creating a SQL injection vector.
-
-Impact: Attacker could execute arbitrary SQL and gain database control.
-
-Suggested Fix: Use parameterized queries:
-  db.query('SELECT * FROM users WHERE name = $1', [username])
-```
-
-## Capabilities
-
-| Feature | Description |
-|---|---|
-| **AI Code Review** | Inline PR comments with explanation, impact, and suggested fix |
-| **Risk Scoring** | 0-100 score with auto-labels on GitHub (`ira:critical` / `ira:high` / `ira:medium` / `ira:low`) |
-| **JIRA AC Validation** | Per-criterion pass/fail with % completion against acceptance criteria |
-| **Test Generation** | Generate tests from JIRA tickets in 8 frameworks (Jest, Vitest, Mocha, Playwright, Cypress, Gherkin, Pytest, JUnit) |
-| **SonarQube Enrichment** | AI explanations and fixes for existing Sonar issues |
-| **Smart Notifications** | Slack and Teams with risk threshold filtering (`--notify-min-risk high --notify-on-ac-fail`) |
-| **Framework Detection** | Tailored suggestions for React, Angular, Vue, NestJS, and more |
-| **Multi-SCM** | GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center |
-| **Multi-AI** | OpenAI, Azure OpenAI, Anthropic, Ollama (local/free) |
-
-## Quick Reference
-
-| What you want | What to add |
-|---|---|
-| AI-only review | `--pr`, SCM token, `--ai-api-key` |
-| + SonarQube | `--sonar-url`, `--sonar-token`, `--project-key` |
-| + JIRA validation | `--jira-url`, `--jira-email`, `--jira-token`, `--jira-ticket` |
-| + Test generation | `--generate-tests --test-framework vitest` |
-| + Slack notify | `--slack-webhook https://hooks.slack.com/services/xxx` |
-| + Teams notify | `--teams-webhook https://outlook.office.com/webhook/xxx` |
-| Only high risk alerts | `--notify-min-risk high` |
-| Preview only | `--dry-run` |
-| Use Anthropic | `--ai-provider anthropic --ai-api-key sk-ant-xxx` |
-| Use Ollama (free) | `--ai-provider ollama` |
-
-## CI Setup
-
-### GitHub Actions
-
-```yaml
-name: AI Code Review
-on:
-  pull_request:
-    types: [opened, synchronize]
-
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: |
-          npx ira-review review \
-            --pr ${{ github.event.pull_request.number }} \
-            --scm-provider github \
-            --github-token ${{ secrets.GITHUB_TOKEN }} \
-            --github-repo ${{ github.repository }} \
-            --no-config-file
-        env:
-          IRA_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-```
-
-### Bitbucket Pipelines
-
-```yaml
-pipelines:
-  pull-requests:
-    '**':
-      - step:
-          name: AI Code Review
-          script:
-            - npx ira-review review
-                --pr $BITBUCKET_PR_ID
-                --repo $BITBUCKET_REPO_FULL_NAME
-                --no-config-file
-          environment:
-            IRA_AI_API_KEY: $OPENAI_API_KEY
-            IRA_BITBUCKET_TOKEN: $BB_TOKEN
-```
-
-**With Bitbucket Server + JIRA + Sonar:**
-```yaml
-pipelines:
-  pull-requests:
-    '**':
-      - step:
-          name: AI Code Review
-          script:
-            - npx ira-review review
-                --pr $BITBUCKET_PR_ID
-                --repo $BITBUCKET_REPO_FULL_NAME
-                --bitbucket-url $BITBUCKET_SERVER_URL
-                --sonar-url $SONAR_URL
-                --sonar-token $SONAR_TOKEN
-                --project-key $SONAR_PROJECT_KEY
-                --jira-url $JIRA_URL
-                --jira-email $JIRA_EMAIL
-                --jira-token $JIRA_TOKEN
-                --jira-ticket AUTH-234
-                --no-config-file
-          environment:
-            IRA_AI_API_KEY: $OPENAI_API_KEY
-            IRA_BITBUCKET_TOKEN: $BB_TOKEN
-```
-
-> Use `--no-config-file` in CI pipelines that run on untrusted PRs (forks, external contributors).
-
-All tokens come from your CI secrets manager. Nothing is hardcoded.
 
 ## Config File
 
-Create `.irarc.json` in your project root:
+Optional. Create `.irarc.json` in your project root:
 
 ```json
 {
@@ -198,16 +151,27 @@ Create `.irarc.json` in your project root:
 }
 ```
 
-CLI flags > env vars > config file. Tokens are blocked from config files for security.
+CLI flags override env vars, which override the config file. Token fields are blocked from config files by design.
+
+## Supported Providers
+
+**SCM:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
+
+**AI:** OpenAI (default), Azure OpenAI, Anthropic, Ollama (local, no key needed)
 
 ## Requirements
 
 - Node.js 18+
 - An AI provider API key (or Ollama running locally)
 
+## Security
+
+Tokens are read from environment variables or CLI flags at runtime. Nothing is written to disk. Config files block token fields by design. No telemetry, no cloud service.
+
 ## License
 
-[Proprietary](LICENSE). See LICENSE file for details.
+[Proprietary](LICENSE)
 
-📖 **Full docs:** [github.com/patilmayur5572/ira-review](https://github.com/patilmayur5572/ira-review)
-🧩 **VS Code Extension:** [marketplace.visualstudio.com](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
+---
+
+[Full docs](https://github.com/patilmayur5572/ira-review) | [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode) | Support: patilmayur5572@gmail.com

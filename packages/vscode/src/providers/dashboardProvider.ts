@@ -129,6 +129,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
       risk: escapeHtml(String(e.riskLevel ?? '')),
     }))))};
 
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     const app = document.getElementById('app');
 
     if (issues.length === 0) {
@@ -178,7 +179,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
         html += '<div class="section"><div class="section-title">Top Recurring Rules</div><div class="card"><div class="bar-chart">';
         for (const r of rules) {
           const pct = (r.count / maxRule) * 100;
-          html += '<div class="bar-row"><div class="bar-label">' + r.rule + '</div><div class="bar-fill" style="width:' + pct + '%;background:var(--vscode-charts-orange)"></div><div class="bar-count">' + r.count + '</div></div>';
+          html += '<div class="bar-row"><div class="bar-label">' + esc(r.rule) + '</div><div class="bar-fill" style="width:' + pct + '%;background:var(--vscode-charts-orange)"></div><div class="bar-count">' + r.count + '</div></div>';
         }
         html += '</div></div></div>';
       }

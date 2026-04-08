@@ -12,14 +12,14 @@ const NOTICE = `
 ┌──────────────────────────────────────────────────────────────┐
 │                                                              │
 │   IRA — Intelligent Review Assistant                         │
-│   Licensed under AGPL-3.0                                    │
+│   Proprietary License                                        │
 │                                                              │
-│   ⚖️  AGPL-3.0 requires that any modifications or use in     │
-│   network services (including CI/CD) must make the full      │
-│   source code available under the same license.              │
+│   This software is proprietary. See the LICENSE file for     │
+│   full terms. Unauthorized copying or distribution is        │
+│   prohibited.                                                │
 │                                                              │
-│   🏢 For commercial/proprietary use without AGPL             │
-│   obligations, a commercial license is available.            │
+│   🏢 Commercial licenses available for teams and             │
+│   enterprise use.                                            │
 │                                                              │
 │   📧 Contact: patilmayur5572@gmail.com                       │
 │   📖 License: https://github.com/patilmayur5572/ira-review  │
