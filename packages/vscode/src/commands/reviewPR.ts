@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { ReviewEngine, detectFramework, BitbucketClient, GitHubClient, buildStandalonePrompt, parseStandaloneResponse, calculateRisk } from 'ira-review';
+import { ReviewEngine, detectFramework, BitbucketClient, GitHubClient, buildStandalonePrompt, parseStandaloneResponse, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
 import type { IraConfig, ReviewResult, ReviewComment, BitbucketConfig, GitHubConfig } from 'ira-review';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { updateStatusBar } from '../providers/statusBarProvider';
@@ -108,6 +108,15 @@ export async function reviewPR(
               email: config.get<string>('jiraEmail', ''),
               token: await authInstance.getJiraToken(),
             };
+          }
+
+          // Detect JIRA ticket from branch name
+          if (iraConfig.jira) {
+            const branch = await execGit('git branch --show-current', workspaceRoot).catch(() => '');
+            const jiraMatch = branch.match(/([A-Z][A-Z0-9]+-\d+)/);
+            if (jiraMatch) {
+              iraConfig.jiraTicket = jiraMatch[1];
+            }
           }
 
           const engine = new ReviewEngine(iraConfig);
@@ -218,7 +227,10 @@ async function runCopilotReview(
     // ignore
   }
 
-  // 4. Review each file with Copilot
+  // 4. Load team rules
+  const rules = loadRulesFile(workspaceRoot);
+
+  // 5. Review each file with Copilot
   const copilot = new CopilotAIProvider();
   const comments: ReviewComment[] = [];
 
@@ -226,7 +238,9 @@ async function runCopilotReview(
   for (const [filePath, diff] of diffByFile) {
     fileIndex++;
     try {
-      const prompt = buildStandalonePrompt(filePath, diff, framework, null);
+      const filteredRules = filterRulesByPath(rules, filePath);
+      const rulesSection = formatRulesForPrompt(filteredRules);
+      const prompt = buildStandalonePrompt(filePath, diff, framework, null, rulesSection);
       const rawResponse = await copilot.rawReview(prompt);
       // Parse the raw AI response into structured issues
       try {
