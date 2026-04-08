@@ -61,15 +61,20 @@ jobs:
           cd public-repo
           git push origin main --follow-tags
 
+      - name: Write release notes to file
+        if: github.event_name == 'release'
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          printf '%s' "$RELEASE_BODY" > /tmp/release-notes.md
+
       - name: Create GitHub release on public repo
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          RELEASE_NAME="${{ github.event.release.name }}"
-          RELEASE_BODY="${{ github.event.release.body }}"
-
           cd public-repo
 
           # Delete existing release with same tag if it exists
@@ -78,4 +83,4 @@ jobs:
           # Create new release
           gh release create "$TAG" \
             --title "$RELEASE_NAME" \
-            --notes "$RELEASE_BODY"
+            --notes-file /tmp/release-notes.md
