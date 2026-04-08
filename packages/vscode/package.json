@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -37,7 +37,9 @@
     "build:prod": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "package": "vsce package",
-    "publish-ext": "vsce publish && ovsx publish"
+    "publish-ext": "vsce publish && ovsx publish",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "ira-review": "file:../../"
@@ -89,6 +91,14 @@
       {
         "command": "ira.generatePRDescription",
         "title": "IRA: Generate PR Description"
+      },
+      {
+        "command": "ira.signIn",
+        "title": "IRA: Sign In (GitHub / Bitbucket)"
+      },
+      {
+        "command": "ira.signOut",
+        "title": "IRA: Sign Out"
       }
     ],
     "menus": {
@@ -201,12 +211,6 @@
           "type": "string",
           "default": "",
           "description": "JIRA API token"
-        },
-        "ira.testFramework": {
-          "type": "string",
-          "enum": ["jest", "vitest", "mocha", "playwright", "cypress", "gherkin", "pytest", "junit"],
-          "default": "jest",
-          "description": "Default test framework for test generation"
         },
         "ira.autoReviewOnSave": {
           "type": "boolean",

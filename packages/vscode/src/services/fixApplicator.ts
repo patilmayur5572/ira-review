@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { LicenseManager } from './licenseManager';
+import { AuthProvider } from './authProvider';
 import { createAIProvider } from 'ira-review';
 import type { ReviewComment } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
@@ -41,7 +42,7 @@ export async function applyFix(comment: ReviewComment): Promise<void> {
       : createAIProvider({
           provider: providerName as 'openai' | 'azure-openai' | 'anthropic' | 'ollama',
           model: config.get<string>('aiModel') ?? 'gpt-4o-mini',
-          apiKey: config.get<string>('aiApiKey') ?? '',
+          apiKey: await AuthProvider.getInstance().getAiApiKey(),
         });
 
     const line = Math.max(0, comment.line - 1);
