@@ -12,6 +12,7 @@ import { createStatusBar, updateStatusBar } from './providers/statusBarProvider'
 import { IraIssuesProvider } from './providers/treeViewProvider';
 import { IraCodeLensProvider } from './providers/codeLensProvider';
 import { LicenseManager } from './services/licenseManager';
+import { AuthProvider } from './services/authProvider';
 import { ReviewHistoryStore } from './services/reviewHistoryStore';
 import { activateAutoReview } from './services/autoReviewer';
 import { IraHistoryProvider } from './providers/historyTreeProvider';
@@ -31,7 +32,8 @@ export function setLastResult(result: ReviewResult | null): void {
 export function activate(context: vscode.ExtensionContext): void {
   console.log('IRA extension is now active');
 
-  // Initialize license manager and history store
+  // Initialize auth, license, and history
+  const auth = AuthProvider.init(context);
   const license = LicenseManager.init(context);
   const historyStore = ReviewHistoryStore.init(context);
 
@@ -66,6 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     diagnosticCollection,
     statusBar,
+    auth,
     license,
     historyStore,
     vscode.commands.registerCommand('ira.reviewPR', () =>
@@ -93,6 +96,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ira.deactivateLicense', () =>
       license.deactivateLicense()
     ),
+    vscode.commands.registerCommand('ira.signIn', async () => {
+      const scmProvider = vscode.workspace.getConfiguration('ira').get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
+      await auth.signIn(scmProvider);
+    }),
+    vscode.commands.registerCommand('ira.signOut', () => auth.signOut()),
     vscode.commands.registerCommand('ira.showIssueDetail', (detail: string) =>
       vscode.window.showInformationMessage(detail, { modal: false })
     ),

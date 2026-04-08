@@ -40,6 +40,7 @@ export class ReviewEngine {
     const { ai, pullRequestId } = this.config;
     const warnings: string[] = [];
     const repoPath = this.config.repoPath ?? process.cwd();
+    const scmClient = this.createSCMClient();
 
     // 1. Fetch issues from SonarQube (if configured)
     let allIssues: SonarIssue[] = [];
@@ -76,7 +77,6 @@ export class ReviewEngine {
     // 5. Fetch PR diff for AI context (soft fail)
     let diffByFile = new Map<string, string>();
     try {
-      const scmClient = this.createSCMClient();
       const fullDiff = await scmClient.getDiff(pullRequestId);
       diffByFile = parseDiffByFile(fullDiff);
     } catch (error) {
@@ -100,7 +100,6 @@ export class ReviewEngine {
     const sourceByFile = new Map<string, string>();
     if (changedFiles.size > 0) {
       try {
-        const scmClient = this.createSCMClient();
         await mapWithConcurrency(
           [...changedFiles],
           AI_CONCURRENCY,
@@ -331,7 +330,6 @@ export class ReviewEngine {
         }
       }
     } else {
-      const scmClient = this.createSCMClient();
       await scmClient.postSummary(summary, pullRequestId);
       let postedCount = 0;
       for (const comment of newComments) {

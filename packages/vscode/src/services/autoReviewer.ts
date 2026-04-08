@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { LicenseManager } from './licenseManager';
+import { AuthProvider } from './authProvider';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { buildStandalonePrompt, parseStandaloneResponse, createAIProvider, detectFramework } from 'ira-review';
 import type { ReviewComment } from 'ira-review';
@@ -60,7 +61,7 @@ async function runFileReview(
       : createAIProvider({
           provider: providerName as 'openai' | 'azure-openai' | 'anthropic' | 'ollama',
           model: config.get<string>('aiModel') ?? 'gpt-4o-mini',
-          apiKey: config.get<string>('aiApiKey') ?? '',
+          apiKey: await AuthProvider.getInstance().getAiApiKey(),
         });
 
     const content = document.getText();

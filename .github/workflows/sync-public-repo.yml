@@ -1,0 +1,81 @@
+name: Sync to Public Repo
+
+# Runs after a release is published (same trigger as npm publish)
+# Also supports manual trigger for ad-hoc syncs
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+        with:
+          repository: patilmayur5572/ira-review
+          token: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          path: public-repo
+          fetch-depth: 0
+
+      - name: Sync files to public repo
+        run: |
+          # README and docs
+          cp README.md public-repo/README.md
+          cp LICENSE public-repo/LICENSE
+
+          # Images and screenshots
+          mkdir -p public-repo/docs/images
+          cp docs/images/* public-repo/docs/images/
+
+      - name: Sync release tag
+        if: github.event_name == 'release'
+        run: |
+          cd public-repo
+          TAG="${{ github.event.release.tag_name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add README.md LICENSE docs/
+          git commit -m "Release $TAG - sync from private repo" || echo "No changes to commit"
+          git tag "$TAG" -m "Release $TAG"
+
+      - name: Sync on manual trigger
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          cd public-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add README.md LICENSE docs/
+          git commit -m "Sync docs from private repo" || echo "No changes to commit"
+
+      - name: Push to public repo
+        run: |
+          cd public-repo
+          git push origin main --follow-tags
+
+      - name: Create GitHub release on public repo
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.event.release.name }}"
+          RELEASE_BODY="${{ github.event.release.body }}"
+
+          cd public-repo
+
+          # Delete existing release with same tag if it exists
+          gh release delete "$TAG" --yes 2>/dev/null || true
+
+          # Create new release
+          gh release create "$TAG" \
+            --title "$RELEASE_NAME" \
+            --notes "$RELEASE_BODY"
