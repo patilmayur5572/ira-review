@@ -4,13 +4,14 @@
  */
 
 import * as vscode from 'vscode';
-import { detectFramework, buildStandalonePrompt, parseStandaloneResponse, createAIProvider, calculateRisk } from 'ira-review';
+import { detectFramework, buildStandalonePrompt, parseStandaloneResponse, createAIProvider, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
 import type { ReviewComment, AIProviderType } from 'ira-review';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { updateStatusBar } from '../providers/statusBarProvider';
 import { IraIssuesProvider } from '../providers/treeViewProvider';
 import { IraCodeLensProvider } from '../providers/codeLensProvider';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AuthProvider } from '../services/authProvider';
 import { setLastResult } from '../extension';
 
 export async function reviewFile(
@@ -51,7 +52,10 @@ export async function reviewFile(
           }
         }
 
-        const prompt = buildStandalonePrompt(filePath, fileContent, framework, null);
+        const rules = workspaceRoot ? loadRulesFile(workspaceRoot) : [];
+        const filteredRules = filterRulesByPath(rules, filePath);
+        const rulesSection = formatRulesForPrompt(filteredRules);
+        const prompt = buildStandalonePrompt(filePath, fileContent, framework, null, rulesSection);
 
         const aiProvider = config.get<string>('aiProvider', 'copilot');
         let rawResponse: string;
@@ -60,7 +64,7 @@ export async function reviewFile(
           const copilot = new CopilotAIProvider();
           rawResponse = await copilot.rawReview(prompt);
         } else {
-          const aiApiKey = config.get<string>('aiApiKey', '');
+          const aiApiKey = await AuthProvider.getInstance().getAiApiKey();
           if (!aiApiKey) {
             vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
             return;
@@ -129,7 +133,7 @@ export async function reviewFile(
         codeLensProvider.update(comments);
 
         vscode.window.showInformationMessage(
-          `IRA: Found ${comments.length} issues in ${filePath}`,
+          `IRA: Found ${comments.length} issues in ${filePath}${rules.length > 0 ? ` (${rules.length} team rules active)` : ''}`,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

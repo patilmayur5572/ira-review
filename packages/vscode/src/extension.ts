@@ -101,9 +101,38 @@ export function activate(context: vscode.ExtensionContext): void {
       await auth.signIn(scmProvider);
     }),
     vscode.commands.registerCommand('ira.signOut', () => auth.signOut()),
-    vscode.commands.registerCommand('ira.showIssueDetail', (detail: string) =>
-      vscode.window.showInformationMessage(detail, { modal: false })
-    ),
+    vscode.commands.registerCommand('ira.showIssueDetail', async (detail: string) => {
+      const doc = await vscode.workspace.openTextDocument({
+        content: detail,
+        language: 'markdown',
+      });
+      await vscode.window.showTextDocument(doc, {
+        viewColumn: vscode.ViewColumn.Beside,
+        preserveFocus: true,
+        preview: true,
+      });
+    }),
+    vscode.commands.registerCommand('ira.initRules', async () => {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceRoot) {
+        vscode.window.showErrorMessage('IRA: No workspace folder open.');
+        return;
+      }
+      const fs = await import('fs');
+      const path = await import('path');
+      const filePath = path.join(workspaceRoot, '.ira-rules.json');
+      if (fs.existsSync(filePath)) {
+        vscode.window.showWarningMessage('IRA: .ira-rules.json already exists.');
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+        await vscode.window.showTextDocument(doc);
+        return;
+      }
+      const template = JSON.stringify({ rules: [] }, null, 2);
+      fs.writeFileSync(filePath, template);
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+      await vscode.window.showTextDocument(doc);
+      vscode.window.showInformationMessage('IRA: Created .ira-rules.json. Add your team rules and commit.');
+    }),
     vscode.commands.registerCommand('ira.applyFix', async (comment) => {
       const { applyFix } = await import('./services/fixApplicator');
       await applyFix(comment);

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["rules"],
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "required": ["message", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "message": { "type": "string", "description": "What to tell the developer when this rule is violated" },
+          "severity": { "type": "string", "enum": ["BLOCKER", "CRITICAL", "MAJOR", "MINOR"], "description": "Issue severity level" },
+          "bad": { "type": "string", "description": "Example of code that violates this rule (recommended)" },
+          "good": { "type": "string", "description": "Example of correct code (recommended)" },
+          "paths": { "type": "array", "items": { "type": "string" }, "description": "Glob patterns to scope this rule (e.g. src/api/**)" },
+          "author": { "type": "string", "description": "Who created this rule" },
+          "createdAt": { "type": "string", "description": "ISO date when created" },
+          "id": { "type": "string", "description": "Optional unique ID" }
+        }
+      }
+    }
+  }
+}

@@ -115,6 +115,39 @@ describe("buildStandalonePrompt", () => {
     expect(prompt).toContain("+hello");
     expect(prompt).not.toContain("<source_file>");
   });
+
+  it("produces same output without 5th param as before", () => {
+    const withoutParam = buildStandalonePrompt("src/app.ts", "+code", "react", null);
+    const withUndefined = buildStandalonePrompt("src/app.ts", "+code", "react", null, undefined);
+    expect(withoutParam).toBe(withUndefined);
+    expect(withoutParam).not.toContain("Team Rules");
+    expect(withoutParam).not.toContain("Team coding standards");
+  });
+
+  it("includes team rules section before Instructions when provided", () => {
+    const rulesSection = "## Team Rules\nYour team has defined the following coding standards.\n\nRule 1: No console.log\nSeverity: MINOR\n";
+    const prompt = buildStandalonePrompt("src/app.ts", "+code", null, null, rulesSection);
+
+    expect(prompt).toContain("## Team Rules");
+    expect(prompt).toContain("No console.log");
+    // Team Rules should appear before Instructions
+    const rulesIndex = prompt.indexOf("## Team Rules");
+    const instructionsIndex = prompt.indexOf("## Instructions");
+    expect(rulesIndex).toBeLessThan(instructionsIndex);
+  });
+
+  it("adds Team coding standards bullet when team rules provided", () => {
+    const rulesSection = "## Team Rules\nRule 1: Test rule\n";
+    const prompt = buildStandalonePrompt("src/app.ts", "+code", null, null, rulesSection);
+
+    expect(prompt).toContain("Team coding standards (check against the Team Rules section above)");
+  });
+
+  it("omits Team Rules section with empty string", () => {
+    const prompt = buildStandalonePrompt("src/app.ts", "+code", null, null, "");
+    expect(prompt).not.toContain("Team Rules");
+    expect(prompt).not.toContain("Team coding standards");
+  });
 });
 
 describe("parseStandaloneResponse", () => {

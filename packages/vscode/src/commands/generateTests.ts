@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { JiraClient, generateTestCases, createAIProvider, detectFramework } from 'ira-review';
 import type { TestFramework, AIProviderType } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AuthProvider } from '../services/authProvider';
 
 const TEST_FRAMEWORKS: TestFramework[] = ['jest', 'vitest', 'mocha', 'playwright', 'cypress', 'gherkin', 'pytest', 'junit'];
 
@@ -32,7 +33,7 @@ export async function generateTests(): Promise<void> {
 
   const jiraUrl = config.get<string>('jiraUrl', '');
   const jiraEmail = config.get<string>('jiraEmail', '');
-  const jiraToken = config.get<string>('jiraToken', '');
+  const jiraToken = await AuthProvider.getInstance().getJiraToken();
 
   if (!jiraUrl || !jiraEmail || !jiraToken) {
     vscode.window.showErrorMessage('IRA: JIRA configuration is missing. Go to Settings → IRA to set jiraUrl, jiraEmail, and jiraToken.');
@@ -63,7 +64,7 @@ export async function generateTests(): Promise<void> {
           const copilot = new CopilotAIProvider();
           result = await generateTestCases(issue, testFramework, copilot, framework);
         } else {
-          const aiApiKey = config.get<string>('aiApiKey', '');
+          const aiApiKey = await AuthProvider.getInstance().getAiApiKey();
           if (!aiApiKey) {
             vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
             return;

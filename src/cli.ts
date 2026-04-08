@@ -27,7 +27,7 @@ const program = new Command();
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
-  .version("1.0.1")
+  .version("1.2.0")
   .hook("preAction", () => {
     console.log(LICENSE_BANNER);
   });
