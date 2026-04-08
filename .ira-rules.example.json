@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "message": "Use parameterized queries for all SQL operations",
+      "bad": "db.query(`SELECT * FROM users WHERE id = ${userId}`)",
+      "good": "db.query('SELECT * FROM users WHERE id = $1', [userId])",
+      "severity": "CRITICAL",
+      "paths": ["src/db/**", "src/api/**"]
+    },
+    {
+      "message": "Wrap external API calls in try/catch with proper error handling",
+      "bad": "const data = await fetch(url).then(r => r.json());",
+      "good": "try {\n  const res = await fetch(url);\n  if (!res.ok) throw new Error(`API error: ${res.status}`);\n  const data = await res.json();\n} catch (error) {\n  logger.error('External API failed', { url, error });\n  throw new ServiceUnavailableError();\n}",
+      "severity": "MAJOR"
+    },
+    {
+      "message": "Always validate request body input before processing",
+      "severity": "MAJOR",
+      "paths": ["src/api/**", "src/routes/**"]
+    },
+    {
+      "message": "Never use console.log in production code, use the logger service",
+      "bad": "console.log('User created:', user);",
+      "good": "logger.info('User created', { userId: user.id });",
+      "severity": "MINOR"
+    }
+  ]
+}

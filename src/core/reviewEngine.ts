@@ -7,6 +7,7 @@ import { SonarClient } from "./sonarClient.js";
 import { filterIssues, groupIssuesByFile } from "./issueProcessor.js";
 import { detectFramework } from "../frameworks/detector.js";
 import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "../ai/promptBuilder.js";
+import { loadRulesFile, filterRulesByPath, formatRulesForPrompt } from "../utils/rulesFile.js";
 import { createAIProvider } from "../ai/aiClient.js";
 import type { AIFoundIssue } from "../ai/promptBuilder.js";
 import { BitbucketClient } from "../scm/bitbucket.js";
@@ -62,7 +63,13 @@ export class ReviewEngine {
       warnings.push(`Framework detection failed: ${msg}`);
     }
 
-    // 4. Code complexity analysis (soft fail, requires Sonar)
+    // 4. Load team rules
+    const teamRules = loadRulesFile(repoPath);
+    if (teamRules.length > 0) {
+      console.log(`  Team rules: ${teamRules.length} loaded from .ira-rules.json`);
+    }
+
+    // 5. Code complexity analysis (soft fail, requires Sonar)
     let complexity: ComplexityReport | null = null;
     if (this.config.sonar) {
       try {
@@ -172,7 +179,9 @@ export class ReviewEngine {
         async ([filePath, diff]): Promise<ReviewComment[]> => {
           try {
             const sourceFile = sourceByFile.get(filePath) ?? null;
-            const prompt = buildStandalonePrompt(filePath, diff, framework, sourceFile);
+            const filteredRules = filterRulesByPath(teamRules, filePath);
+            const rulesSection = formatRulesForPrompt(filteredRules);
+            const prompt = buildStandalonePrompt(filePath, diff, framework, sourceFile, rulesSection);
             const response = await aiProvider.review(prompt);
             // explanation field contains a JSON-encoded array of issues
             const foundIssues = parseStandaloneResponse(response.explanation);

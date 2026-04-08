@@ -26,3 +26,11 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+      - name: Test VS Code extension
+        working-directory: packages/vscode
+        run: |
+          npm install
+          npx tsc --noEmit
+          npx vitest run
+          node esbuild.js

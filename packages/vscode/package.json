@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -99,6 +99,10 @@
       {
         "command": "ira.signOut",
         "title": "IRA: Sign Out"
+      },
+      {
+        "command": "ira.initRules",
+        "title": "IRA: Init Rules File"
       }
     ],
     "menus": {
@@ -254,6 +258,12 @@
         }
       }
     },
+    "jsonValidation": [
+      {
+        "fileMatch": ".ira-rules.json",
+        "url": "./schemas/ira-rules.schema.json"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
