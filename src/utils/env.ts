@@ -187,12 +187,13 @@ function resolveJiraConfig(
   const email = overrides.jiraEmail ?? optionalEnv("IRA_JIRA_EMAIL");
   const token = overrides.jiraToken ?? optionalEnv("IRA_JIRA_TOKEN");
 
-  if (!baseUrl || !email || !token) return undefined;
+  if (!baseUrl || !token) return undefined;
 
   return {
     baseUrl,
-    email,
+    email: email ?? '',
     token,
+    ...(overrides.jiraType && { type: overrides.jiraType as 'cloud' | 'server' }),
     ...(overrides.jiraAcField && {
       acceptanceCriteriaField: overrides.jiraAcField,
     }),
@@ -224,6 +225,7 @@ export interface FlatConfig {
   jiraEmail?: string;
   jiraToken?: string;
   jiraTicket?: string;
+  jiraType?: string;
   jiraAcField?: string;
   slackWebhook?: string;
   teamsWebhook?: string;

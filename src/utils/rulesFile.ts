@@ -12,19 +12,25 @@ export interface IraRule {
   createdAt?: string;
 }
 
+export interface SensitiveArea {
+  glob: string;
+  label: string;
+}
+
 export interface IraRulesFile {
   rules: IraRule[];
+  sensitiveAreas?: SensitiveArea[];
 }
 
 const VALID_SEVERITIES = ['BLOCKER', 'CRITICAL', 'MAJOR', 'MINOR'] as const;
 const MAX_RULES = 30;
 
-export function loadRulesFile(cwd?: string): IraRule[] {
+function loadRawRulesFile(cwd?: string): Record<string, unknown> | null {
   const dir = cwd ?? process.cwd();
   const filePath = resolve(dir, '.ira-rules.json');
 
   if (!existsSync(filePath)) {
-    return [];
+    return null;
   }
 
   let parsed: unknown;
@@ -33,15 +39,28 @@ export function loadRulesFile(cwd?: string): IraRule[] {
     parsed = JSON.parse(raw);
   } catch {
     console.warn('IRA: .ira-rules.json has syntax errors. Team rules will not be enforced.');
-    return [];
+    return null;
   }
 
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as Record<string, unknown>).rules)) {
+  if (!parsed || typeof parsed !== 'object') {
     console.warn('IRA: .ira-rules.json has syntax errors. Team rules will not be enforced.');
+    return null;
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+export function loadRulesFile(cwd?: string): IraRule[] {
+  const parsed = loadRawRulesFile(cwd);
+
+  if (!parsed || !Array.isArray(parsed.rules)) {
+    if (parsed) {
+      console.warn('IRA: .ira-rules.json has syntax errors. Team rules will not be enforced.');
+    }
     return [];
   }
 
-  const rawRules = (parsed as { rules: unknown[] }).rules;
+  const rawRules = parsed.rules as unknown[];
   const valid: IraRule[] = [];
 
   for (const entry of rawRules) {
@@ -112,6 +131,46 @@ function matchPattern(pattern: string, filePath: string): boolean {
 
   // Exact match
   return filePath === pattern;
+}
+
+export function loadSensitiveAreas(cwd?: string): SensitiveArea[] {
+  const parsed = loadRawRulesFile(cwd);
+
+  if (!parsed || !Array.isArray(parsed.sensitiveAreas)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  return (parsed.sensitiveAreas as unknown[])
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .filter((glob) => {
+      if (seen.has(glob)) return false;
+      seen.add(glob);
+      return true;
+    })
+    .map((glob) => ({
+      glob,
+      label: deriveLabelFromGlob(glob),
+    }));
+}
+
+function deriveLabelFromGlob(glob: string): string {
+  // "src/services/payment/**" → "payment"
+  // "**/auth/**" → "auth"
+  // "src/config/database.*" → "database"
+  const cleaned = glob.replace(/\*+\/?/g, '').replace(/\/$/, '');
+  const parts = cleaned.split('/').filter(Boolean);
+  const last = parts[parts.length - 1] ?? glob;
+  // Remove file extension if present
+  return last.replace(/\.[^.]+$/, '');
+}
+
+export function matchSensitiveArea(areas: SensitiveArea[], filePath: string): SensitiveArea | null {
+  return areas.find((area) => matchPattern(area.glob, filePath)) ?? null;
+}
+
+export function formatSensitiveAreaForPrompt(area: SensitiveArea): string {
+  return `## ⚠️ Sensitive Area\nThis file is in a sensitive area: **${area.label}** (${area.glob}). Review this code with extra scrutiny — issues here have higher blast radius.`;
 }
 
 export function formatRulesForPrompt(rules: IraRule[]): string {

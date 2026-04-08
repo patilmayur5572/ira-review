@@ -8,29 +8,35 @@ import { BitbucketClient, GitHubClient, JiraClient, createAIProvider } from 'ira
 import type { BitbucketConfig, GitHubConfig, AIProviderType } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { AuthProvider } from '../services/authProvider';
+import { resolveAiApiKey } from '../utils/credentialPrompts';
+import * as msg from '../utils/messages';
 import * as cp from 'child_process';
 
 const MAX_DIFF_LENGTH = 100_000;
 
 export async function generatePRDescription(): Promise<void> {
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceRoot) {
-    vscode.window.showErrorMessage('IRA: No workspace folder open.');
+  const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
+    ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+    : undefined;
+  const fallbackDir = activeFileDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!fallbackDir) {
+    vscode.window.showErrorMessage(msg.noWorkspace());
     return;
   }
+  const workspaceRoot = await execGit('git rev-parse --show-toplevel', fallbackDir).catch(() => fallbackDir);
 
   const choice = await vscode.window.showQuickPick(
     [
       { label: '$(git-pull-request) I have a PR', value: 'pr' },
       { label: '$(git-branch) No PR yet (use local diff)', value: 'local' },
     ],
-    { placeHolder: 'How would you like to generate the PR description?' },
+    { placeHolder: msg.prompts.prDescMode },
   );
 
   if (!choice) return;
 
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'IRA: Generating PR Description...', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: msg.progress.generatePRDesc, cancellable: false },
     async () => {
       try {
         const config = vscode.workspace.getConfiguration('ira');
@@ -39,11 +45,13 @@ export async function generatePRDescription(): Promise<void> {
         if (choice.value === 'pr') {
           fullDiff = await fetchPRDiff(config, workspaceRoot);
         } else {
-          fullDiff = await execGit('git diff main...HEAD', workspaceRoot);
+          const defaultBranch = await detectDefaultBranch(workspaceRoot);
+          // Include both committed and uncommitted changes against the default branch
+          fullDiff = await execGit(`git diff ${defaultBranch}`, workspaceRoot);
         }
 
         if (!fullDiff.trim()) {
-          vscode.window.showWarningMessage('IRA: No diff found. Make sure you have changes relative to main.');
+          vscode.window.showWarningMessage(msg.noDiff());
           return;
         }
 
@@ -85,11 +93,8 @@ export async function generatePRDescription(): Promise<void> {
           const copilot = new CopilotAIProvider();
           description = await copilot.rawReview(prompt);
         } else {
-          const aiApiKey = await authInstance.getAiApiKey();
-          if (!aiApiKey) {
-            vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
-            return;
-          }
+          const aiApiKey = await resolveAiApiKey();
+          if (!aiApiKey) return;
           const provider = createAIProvider({
             provider: aiProvider as AIProviderType,
             apiKey: aiApiKey,
@@ -105,7 +110,7 @@ export async function generatePRDescription(): Promise<void> {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('IRA: Generate PR Description error:', message);
-        vscode.window.showErrorMessage(`IRA: Failed to generate PR description — ${message}`);
+        vscode.window.showErrorMessage(msg.prDescFailed(message));
       }
     },
   );
@@ -156,10 +161,10 @@ async function fetchPRDiff(
 
   const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
 
-  const branch = await execGit('git branch --show-current', workspaceRoot).catch(() => 'unknown');
+  const branch = await execGit('git branch --show-current', workspaceRoot).catch(() => '');
   const prNumber = await vscode.window.showInputBox({
-    prompt: `Enter the Pull Request number for branch "${branch}"`,
-    placeHolder: 'e.g. 123',
+    prompt: branch ? msg.prompts.prNumber(branch) : 'What\'s the PR number?',
+    placeHolder: msg.prompts.prNumberPlaceholder,
   });
 
   if (!prNumber) {
@@ -245,6 +250,24 @@ function detectRepo(cwd: string): Promise<{ owner: string; repo: string; baseUrl
 
     return { owner: '', repo: '' };
   }).catch(() => ({ owner: '', repo: '' }));
+}
+
+async function detectDefaultBranch(cwd: string): Promise<string> {
+  // Try origin/HEAD symbolic ref first (most reliable)
+  try {
+    const ref = await execGit('git symbolic-ref refs/remotes/origin/HEAD', cwd);
+    return ref.replace('refs/remotes/origin/', '');
+  } catch { /* ignore */ }
+
+  // Fall back: check if main or master exists
+  for (const branch of ['main', 'master']) {
+    try {
+      await execGit(`git rev-parse --verify ${branch}`, cwd);
+      return branch;
+    } catch { /* ignore */ }
+  }
+
+  return 'main';
 }
 
 function execGit(command: string, cwd: string): Promise<string> {

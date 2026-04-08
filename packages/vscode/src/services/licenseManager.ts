@@ -4,6 +4,7 @@
  */
 
 import * as vscode from 'vscode';
+import * as msg from '../utils/messages';
 
 const POLAR_API = 'https://api.polar.sh/v1/customer-portal/license-keys';
 
@@ -152,7 +153,7 @@ export class LicenseManager {
       } satisfies LicenseCache);
 
       this._onDidChangeLicense.fire(true);
-      vscode.window.showInformationMessage('🎉 IRA Pro activated! Enjoy your Pro features.');
+      vscode.window.showInformationMessage(msg.proActivated());
       return true;
     } catch {
       vscode.window.showErrorMessage('Could not activate license. Check your internet connection.');
@@ -183,7 +184,7 @@ export class LicenseManager {
     await this.secrets.delete('ira-license-key');
     await this.context.globalState.update('ira-license', undefined);
     this._onDidChangeLicense.fire(false);
-    vscode.window.showInformationMessage('IRA Pro license deactivated.');
+    vscode.window.showInformationMessage(msg.proDeactivated());
   }
 
   async showProUpsell(feature: string): Promise<void> {

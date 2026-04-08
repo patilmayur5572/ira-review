@@ -221,4 +221,30 @@ describe("calculateRisk", () => {
 
     expect(result.summary).toContain("Top concerns:");
   });
+
+  it("adds Sensitive Area factor when sensitiveFileMultiplier > 1", () => {
+    const issues = [makeIssue({ severity: "MAJOR" })];
+    const result = calculateRisk({
+      allIssues: issues,
+      filteredIssues: issues,
+      complexity: null,
+      filesChanged: 1,
+      sensitiveFileMultiplier: 2,
+    });
+    const sensitiveFactor = result.factors.find(f => f.name === "Sensitive Area");
+    expect(sensitiveFactor).toBeDefined();
+    expect(sensitiveFactor!.score).toBe(5); // 1 issue × 5 = 5
+  });
+
+  it("does not add Sensitive Area factor when multiplier is 1", () => {
+    const result = calculateRisk({
+      allIssues: [],
+      filteredIssues: [],
+      complexity: null,
+      filesChanged: 0,
+      sensitiveFileMultiplier: 1,
+    });
+    const sensitiveFactor = result.factors.find(f => f.name === "Sensitive Area");
+    expect(sensitiveFactor).toBeUndefined();
+  });
 });
