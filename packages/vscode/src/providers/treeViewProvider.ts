@@ -19,11 +19,13 @@ export class IraIssueItem extends vscode.TreeItem {
 
 export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> {
   private _results: ReviewComment[] = [];
+  private _workspaceRoot: string = '';
   private _onDidChangeTreeData = new vscode.EventEmitter<IraIssueItem | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  update(comments: ReviewComment[]): void {
+  update(comments: ReviewComment[], workspaceRoot?: string): void {
     this._results = comments;
+    if (workspaceRoot) this._workspaceRoot = workspaceRoot;
     this._onDidChangeTreeData.fire();
   }
 
@@ -56,8 +58,8 @@ export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> 
         const truncated = label.length > 100 ? label.substring(0, 97) + '...' : label;
         const item = new IraIssueItem(truncated, vscode.TreeItemCollapsibleState.None);
         const line = Math.max(0, comment.line - 1);
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-        const uri = vscode.Uri.file(path.join(workspaceRoot, comment.filePath));
+        const root = this._workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const uri = vscode.Uri.file(path.join(root, comment.filePath));
         item.command = {
           command: 'vscode.open',
           title: 'Open File',

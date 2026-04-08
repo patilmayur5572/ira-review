@@ -42,8 +42,12 @@ export async function generateTestCases(
     diffContext,
     sourceFiles,
   );
-  const response = await aiProvider.review(prompt);
-  const { testCases, parseWarning } = parseTestGenerationResponse(response.explanation);
+  // Use rawReview if available (Copilot) to get the unprocessed response,
+  // otherwise fall back to review().explanation
+  const rawText = typeof (aiProvider as any).rawReview === 'function'
+    ? await (aiProvider as any).rawReview(prompt) as string
+    : (await aiProvider.review(prompt)).explanation;
+  const { testCases, parseWarning } = parseTestGenerationResponse(rawText);
 
   return {
     jiraKey: jiraIssue.key,
@@ -176,11 +180,33 @@ void shouldDoSomething() {
 }
 
 function parseTestGenerationResponse(explanation: string): { testCases: GeneratedTestCase[]; parseWarning?: string } {
-  // Try JSON array extraction
-  const jsonMatch = explanation.match(/\[[\s\S]*\]/);
-  if (jsonMatch) {
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  let cleaned = explanation.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+  // 1. Try direct JSON parse (could be array or object)
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return { testCases: mapTestCases(parsed) };
+    }
+    // If the AI returned the wrapper object, extract the explanation field
+    if (parsed && typeof parsed === 'object' && parsed.explanation) {
+      const inner = typeof parsed.explanation === 'string'
+        ? JSON.parse(parsed.explanation)
+        : parsed.explanation;
+      if (Array.isArray(inner)) {
+        return { testCases: mapTestCases(inner) };
+      }
+    }
+  } catch {
+    // Fall through
+  }
+
+  // 2. Try extracting a JSON array from the text
+  const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
     try {
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(arrayMatch[0]);
       if (Array.isArray(parsed)) {
         return { testCases: mapTestCases(parsed) };
       }
@@ -189,14 +215,34 @@ function parseTestGenerationResponse(explanation: string): { testCases: Generate
     }
   }
 
-  // Try direct JSON parse
-  try {
-    const parsed = JSON.parse(explanation);
-    if (Array.isArray(parsed)) {
-      return { testCases: mapTestCases(parsed) };
+  // 3. Try extracting a JSON object with an explanation field from the text
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      if (parsed && typeof parsed === 'object' && parsed.explanation) {
+        const inner = typeof parsed.explanation === 'string'
+          ? JSON.parse(parsed.explanation)
+          : parsed.explanation;
+        if (Array.isArray(inner)) {
+          return { testCases: mapTestCases(inner) };
+        }
+      }
+    } catch {
+      // Fall through
     }
-  } catch {
-    // Fall through
+  }
+
+  // 4. Fallback: AI returned raw test code instead of JSON — wrap it as a single test case
+  if (cleaned.length > 50 && (cleaned.includes('test(') || cleaned.includes('it(') || cleaned.includes('describe(') || cleaned.includes('def test_') || cleaned.includes('@Test') || cleaned.includes('Scenario:'))) {
+    return {
+      testCases: [{
+        description: "AI-generated test suite",
+        type: "happy-path" as const,
+        criterion: "Full test output from AI",
+        code: cleaned,
+      }],
+    };
   }
 
   return { testCases: [], parseWarning: "Failed to parse AI response for test generation" };

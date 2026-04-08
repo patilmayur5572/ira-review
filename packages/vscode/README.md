@@ -94,10 +94,10 @@ They are complementary. Use Copilot to write. Use IRA to review. IRA uses your e
 1. Install IRA from the VS Code Marketplace
 2. Open a project with a GitHub or Bitbucket remote
 3. `Cmd+Shift+P` > `IRA: Review Current PR`
-4. Enter your PR number
+4. Pick "I have a PR number" or "No PR yet (review local changes)"
 5. Issues appear inline in your editor
 
-That is it. If you have GitHub Copilot, IRA uses it automatically. No API keys, no config files, no setup wizard.
+That is it. If you have GitHub Copilot, IRA uses it automatically. No API keys, no config files, no setup wizard. No PR? No problem - IRA diffs your local changes against the default branch.
 
 **Bitbucket?** IRA auto-detects it from your git remote. It will ask for your token once and store it in the OS keychain.
 
@@ -131,6 +131,22 @@ Put them in `.ira-rules.json` at your repo root. IRA enforces them on every revi
 
 Run `IRA: Init Rules File` from the command palette to scaffold one. IRA ships a JSON Schema, so you get autocomplete and validation as you edit. Rules are scoped by `paths` (optional), capped at 30 per file, and enforced in every review surface with no license gating.
 
+### Sensitive Areas
+
+Mark critical parts of your codebase so IRA reviews them with extra scrutiny:
+
+```json
+{
+  "rules": [],
+  "sensitiveAreas": [
+    "src/services/payment/**",
+    "**/auth/**"
+  ]
+}
+```
+
+When a reviewed file matches a sensitive path, the AI applies deeper analysis and the risk score is amplified. Issues in sensitive code weigh heavier because the blast radius is bigger. A 🔒 badge shows in the output so reviewers know which files need extra attention.
+
 ---
 
 ## Where IRA Pays for Itself
@@ -163,12 +179,13 @@ All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux
 
 | Command | What it does |
 |---|---|
-| `IRA: Review Current PR` | Review all changed files in a pull request |
+| `IRA: Review Current PR` | Review all changed files in a pull request, or review local changes without a PR |
 | `IRA: Review Current File` | Review the active editor file |
 | `IRA: Generate PR Description` | Generate a PR description from the diff and JIRA context |
 | `IRA: Generate Tests` | Generate test cases from JIRA acceptance criteria |
 | `IRA: Init Rules File` | Scaffold a `.ira-rules.json` in the workspace root |
-| `IRA: Show Risk Score` | Display the risk score from the last review |
+| `IRA: Validate JIRA AC` | Validate local changes against JIRA acceptance criteria (no PR needed) |
+| `IRA: Show Risk Score` | Calculate and display the risk score for the current file |
 | `IRA: Sign In (GitHub / Bitbucket)` | Authenticate with your SCM provider |
 | `IRA: Sign Out` | Clear all stored credentials from the OS keychain |
 | `IRA: Configure` | Open IRA settings |
@@ -180,6 +197,7 @@ All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux
 
 - **AI Providers:** GitHub Copilot (default, zero config), OpenAI, Azure OpenAI, Anthropic, Ollama (fully local)
 - **SCM Providers:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
+- **JIRA:** Cloud (Atlassian-hosted) and Server/Data Center (self-hosted) with auto-detection
 - **Integrations:** SonarQube (static analysis enrichment), JIRA (acceptance criteria validation), Slack and Teams (review notifications)
 
 ---

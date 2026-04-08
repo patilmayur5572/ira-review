@@ -14,6 +14,7 @@ const jiraConfig = {
   baseUrl: "https://jira.example.com",
   email: "user@example.com",
   token: "jira-token",
+  type: "cloud" as const,
 };
 
 describe("JiraClient", () => {

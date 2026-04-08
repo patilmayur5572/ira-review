@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { detectFramework, buildStandalonePrompt, parseStandaloneResponse, createAIProvider, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
+import { detectFramework, buildStandalonePrompt, parseStandaloneResponse, createAIProvider, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from 'ira-review';
 import type { ReviewComment, AIProviderType } from 'ira-review';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { updateStatusBar } from '../providers/statusBarProvider';
@@ -13,6 +13,10 @@ import { IraCodeLensProvider } from '../providers/codeLensProvider';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { setLastResult } from '../extension';
+import { isNoAIProviderError, showAISetupPrompt } from '../services/ollamaSetup';
+import { resolveAiApiKey } from '../utils/credentialPrompts';
+import * as msg from '../utils/messages';
+import * as cp from 'child_process';
 
 export async function reviewFile(
   context: vscode.ExtensionContext,
@@ -23,7 +27,7 @@ export async function reviewFile(
 ): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
-    vscode.window.showErrorMessage('IRA: No active file open.');
+    vscode.window.showErrorMessage(msg.noActiveFile());
     return;
   }
 
@@ -32,16 +36,22 @@ export async function reviewFile(
   const fileContent = document.getText();
 
   if (!fileContent.trim()) {
-    vscode.window.showWarningMessage('IRA: The active file is empty.');
+    vscode.window.showWarningMessage(msg.fileEmpty());
     return;
   }
 
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'IRA: Reviewing File...', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: msg.progress.reviewFile, cancellable: false },
     async () => {
       try {
         const config = vscode.workspace.getConfiguration('ira');
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
+          ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+          : undefined;
+        const fallbackDir = activeFileDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const workspaceRoot = fallbackDir
+          ? await execGit('git rev-parse --show-toplevel', fallbackDir).catch(() => fallbackDir)
+          : undefined;
 
         let framework: Awaited<ReturnType<typeof detectFramework>> = null;
         if (workspaceRoot) {
@@ -55,7 +65,10 @@ export async function reviewFile(
         const rules = workspaceRoot ? loadRulesFile(workspaceRoot) : [];
         const filteredRules = filterRulesByPath(rules, filePath);
         const rulesSection = formatRulesForPrompt(filteredRules);
-        const prompt = buildStandalonePrompt(filePath, fileContent, framework, null, rulesSection);
+        const sensitiveAreas = loadSensitiveAreas(workspaceRoot);
+        const sensitiveMatch = matchSensitiveArea(sensitiveAreas, filePath);
+        const sensitiveContext = sensitiveMatch ? formatSensitiveAreaForPrompt(sensitiveMatch) : undefined;
+        const prompt = buildStandalonePrompt(filePath, fileContent, framework, null, rulesSection, sensitiveContext);
 
         const aiProvider = config.get<string>('aiProvider', 'copilot');
         let rawResponse: string;
@@ -64,11 +77,8 @@ export async function reviewFile(
           const copilot = new CopilotAIProvider();
           rawResponse = await copilot.rawReview(prompt);
         } else {
-          const aiApiKey = await AuthProvider.getInstance().getAiApiKey();
-          if (!aiApiKey) {
-            vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
-            return;
-          }
+          const aiApiKey = await resolveAiApiKey();
+          if (!aiApiKey) return;
           const provider = createAIProvider({
             provider: aiProvider as AIProviderType,
             apiKey: aiApiKey,
@@ -110,6 +120,7 @@ export async function reviewFile(
               filteredIssues: sonarIssues,
               complexity: null,
               filesChanged: 1,
+              sensitiveFileMultiplier: sensitiveMatch ? 2 : 1,
             })
           : null;
 
@@ -129,17 +140,30 @@ export async function reviewFile(
         setLastResult(result);
         updateDiagnostics(comments, diagnosticCollection, workspaceRoot ?? '');
         updateStatusBar(statusBar, risk);
-        treeProvider.update(comments);
+        treeProvider.update(comments, workspaceRoot);
         codeLensProvider.update(comments);
 
-        vscode.window.showInformationMessage(
-          `IRA: Found ${comments.length} issues in ${filePath}${rules.length > 0 ? ` (${rules.length} team rules active)` : ''}`,
-        );
+        const sensitiveTag = sensitiveMatch ? '🔒 ' + sensitiveMatch.label + ' · ' : '';
+        const successMsg = await msg.reviewFileSuccess(comments.length, filePath, rules.length, sensitiveTag);
+        vscode.window.showInformationMessage(successMsg);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('IRA: Review File error:', message);
-        vscode.window.showErrorMessage(`IRA: File review failed — ${message}`);
+        if (isNoAIProviderError(message)) {
+          showAISetupPrompt();
+        } else {
+          vscode.window.showErrorMessage(msg.reviewFailed(message));
+        }
       }
     },
   );
+}
+
+function execGit(command: string, cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cp.exec(command, { cwd }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout.trim());
+    });
+  });
 }

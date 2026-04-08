@@ -32,10 +32,13 @@ export interface AIConfig {
   deploymentName?: string;
 }
 
+export type JiraType = "cloud" | "server";
+
 export interface JiraConfig {
   baseUrl: string;
   email: string;
   token: string;
+  type?: JiraType;
   acceptanceCriteriaField?: string;
 }
 

@@ -5,12 +5,8 @@
  */
 
 import * as vscode from 'vscode';
-
-export interface CopilotReviewResult {
-  explanation: string;
-  impact: string;
-  suggestedFix: string;
-}
+import { parseAIResponse } from 'ira-review';
+import type { AIReviewComment } from 'ira-review';
 
 export class CopilotAIProvider {
   async rawReview(prompt: string): Promise<string> {
@@ -42,33 +38,10 @@ export class CopilotAIProvider {
     throw new Error('No Copilot language model available. Make sure GitHub Copilot is installed and signed in.');
   }
 
-  async review(prompt: string): Promise<CopilotReviewResult> {
+  async review(prompt: string): Promise<AIReviewComment> {
     const fullText = await this.rawReview(prompt);
-    return parseReviewResponse(fullText);
+    // Strip markdown code fences that Copilot often wraps around JSON
+    const cleaned = fullText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    return parseAIResponse(cleaned);
   }
-}
-
-function parseReviewResponse(text: string): CopilotReviewResult {
-  // Try to parse structured response
-  const explanationMatch = text.match(/(?:explanation|explain)[:\s]*(.+?)(?=\n(?:impact|suggest)|$)/is);
-  const impactMatch = text.match(/impact[:\s]*(.+?)(?=\n(?:suggest|fix)|$)/is);
-  const fixMatch = text.match(/(?:suggest(?:ed)?[\s_]*fix|fix)[:\s]*(.+?)$/is);
-
-  if (explanationMatch && impactMatch && fixMatch) {
-    return {
-      explanation: explanationMatch[1].trim(),
-      impact: impactMatch[1].trim(),
-      suggestedFix: fixMatch[1].trim(),
-    };
-  }
-
-  // Fallback: split text into thirds
-  const lines = text.split('\n').filter(l => l.trim());
-  const third = Math.ceil(lines.length / 3);
-
-  return {
-    explanation: lines.slice(0, third).join('\n').trim() || text,
-    impact: lines.slice(third, third * 2).join('\n').trim() || 'See explanation above.',
-    suggestedFix: lines.slice(third * 2).join('\n').trim() || 'Review the code based on the explanation.',
-  };
 }

@@ -9,6 +9,7 @@ import { AuthProvider } from './authProvider';
 import { createAIProvider } from 'ira-review';
 import type { ReviewComment } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import * as msg from '../utils/messages';
 
 export async function applyFix(comment: ReviewComment): Promise<void> {
   const license = LicenseManager.getInstance();
@@ -18,8 +19,16 @@ export async function applyFix(comment: ReviewComment): Promise<void> {
     return;
   }
 
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceRoot) return;
+  const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
+    ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+    : undefined;
+  const fallbackDir = activeFileDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!fallbackDir) return;
+  const workspaceRoot = await new Promise<string>((resolve) => {
+    require('child_process').exec('git rev-parse --show-toplevel', { cwd: fallbackDir }, (err: Error | null, stdout: string) => {
+      resolve(err ? fallbackDir : stdout.trim());
+    });
+  });
 
   const fileUri = vscode.Uri.joinPath(vscode.Uri.file(workspaceRoot), comment.filePath);
 
@@ -27,11 +36,11 @@ export async function applyFix(comment: ReviewComment): Promise<void> {
   try {
     document = await vscode.workspace.openTextDocument(fileUri);
   } catch {
-    vscode.window.showErrorMessage(`IRA: Could not open file ${comment.filePath}`);
+    vscode.window.showErrorMessage(msg.couldNotOpenFile(comment.filePath));
     return;
   }
 
-  const statusMsg = vscode.window.setStatusBarMessage('$(sync~spin) IRA: Generating fix...');
+  const statusMsg = vscode.window.setStatusBarMessage(msg.progress.generatingFix);
 
   try {
     const config = vscode.workspace.getConfiguration('ira');
@@ -82,17 +91,17 @@ Return ONLY the fixed code:`;
 
     if (action === 'Apply Fix') {
       await vscode.workspace.applyEdit(edit);
-      vscode.window.showInformationMessage('✅ IRA: Fix applied.');
+      vscode.window.showInformationMessage(msg.fixApplied(false));
     } else if (action === 'Show Diff') {
       const editor = await vscode.window.showTextDocument(document);
       editor.revealRange(contextRange, vscode.TextEditorRevealType.InCenter);
       // Apply with undo support so user can review
       await vscode.workspace.applyEdit(edit);
-      vscode.window.showInformationMessage('IRA: Fix applied. Use Ctrl+Z to undo if needed.');
+      vscode.window.showInformationMessage(msg.fixApplied(true));
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    vscode.window.showErrorMessage(`IRA: Fix generation failed: ${msg}`);
+    const errMsg = err instanceof Error ? err.message : 'Unknown error';
+    vscode.window.showErrorMessage(msg.fixFailed(errMsg));
   } finally {
     statusMsg.dispose();
   }

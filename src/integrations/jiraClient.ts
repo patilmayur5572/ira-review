@@ -6,13 +6,18 @@ export class JiraClient {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
   private readonly acceptanceCriteriaField: string;
+  private readonly isCloud: boolean;
 
   constructor(config: JiraConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.acceptanceCriteriaField =
       config.acceptanceCriteriaField ?? "customfield_10035";
+    this.isCloud = config.type === "cloud" || (!config.type && config.baseUrl.includes("atlassian.net"));
+    const authHeader = this.isCloud
+      ? `Basic ${btoa(`${config.email}:${config.token}`)}`
+      : `Bearer ${config.token}`;
     this.headers = {
-      Authorization: `Basic ${btoa(`${config.email}:${config.token}`)}`,
+      Authorization: authHeader,
       "Content-Type": "application/json",
       Accept: "application/json",
     };
@@ -21,7 +26,8 @@ export class JiraClient {
   async fetchIssue(issueKey: string): Promise<JiraIssue> {
     return withRetry(async () => {
       const fields = `summary,description,status,issuetype,labels,${this.acceptanceCriteriaField}`;
-      const url = `${this.baseUrl}/rest/api/3/issue/${issueKey}?fields=${fields}`;
+      const apiVersion = this.isCloud ? "3" : "2";
+      const url = `${this.baseUrl}/rest/api/${apiVersion}/issue/${issueKey}?fields=${fields}`;
 
       const response = await fetchWithTimeout(url, { headers: this.headers });
 

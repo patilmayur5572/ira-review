@@ -10,16 +10,24 @@ import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { buildStandalonePrompt, parseStandaloneResponse, createAIProvider, detectFramework, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
 import type { ReviewComment } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import * as msg from '../utils/messages';
 
 let disposable: vscode.Disposable | undefined;
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let upsellShown = false;
+let suppressAutoReview = false;
+
+/** Suppress the auto-review upsell popup while another command is running. */
+export function suppressAutoReviewPopup(suppress: boolean): void {
+  suppressAutoReview = suppress;
+}
 
 export function activateAutoReview(
   context: vscode.ExtensionContext,
   diagnosticCollection: vscode.DiagnosticCollection,
 ): void {
   disposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
+    if (suppressAutoReview) return;
     const config = vscode.workspace.getConfiguration('ira');
     if (!config.get<boolean>('autoReviewOnSave')) return;
 
@@ -49,8 +57,14 @@ async function runFileReview(
   document: vscode.TextDocument,
   diagnosticCollection: vscode.DiagnosticCollection,
 ): Promise<void> {
-  const statusMsg = vscode.window.setStatusBarMessage('$(sync~spin) IRA: Auto-reviewing...');
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const statusMsg = vscode.window.setStatusBarMessage(msg.progress.autoReview);
+  // Resolve git root from the saved document's directory
+  const docDir = require('path').dirname(document.uri.fsPath);
+  const workspaceRoot = await new Promise<string | undefined>((resolve) => {
+    require('child_process').exec('git rev-parse --show-toplevel', { cwd: docDir }, (err: Error | null, stdout: string) => {
+      resolve(err ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath : stdout.trim());
+    });
+  });
 
   try {
     const config = vscode.workspace.getConfiguration('ira');
