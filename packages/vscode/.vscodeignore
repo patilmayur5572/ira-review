@@ -1,6 +1,7 @@
 .vscode/**
 src/**
 node_modules/**
+docs/**
 tsconfig.json
 esbuild.js
 vitest.config.ts

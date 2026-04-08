@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { BitbucketClient, GitHubClient, JiraClient, createAIProvider } from 'ira-review';
 import type { BitbucketConfig, GitHubConfig, AIProviderType } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AuthProvider } from '../services/authProvider';
 import * as cp from 'child_process';
 
 const MAX_DIFF_LENGTH = 100_000;
@@ -51,10 +52,12 @@ export async function generatePRDescription(): Promise<void> {
         const ticketMatch = branch.match(/([A-Z][A-Z0-9]+-\d+)/);
         let jiraContext = '';
 
+        const authInstance = AuthProvider.getInstance();
+
         if (ticketMatch) {
           const jiraUrl = config.get<string>('jiraUrl', '');
           const jiraEmail = config.get<string>('jiraEmail', '');
-          const jiraToken = config.get<string>('jiraToken', '');
+          const jiraToken = await authInstance.getJiraToken();
 
           if (jiraUrl && jiraEmail && jiraToken) {
             try {
@@ -82,7 +85,7 @@ export async function generatePRDescription(): Promise<void> {
           const copilot = new CopilotAIProvider();
           description = await copilot.rawReview(prompt);
         } else {
-          const aiApiKey = config.get<string>('aiApiKey', '');
+          const aiApiKey = await authInstance.getAiApiKey();
           if (!aiApiKey) {
             vscode.window.showErrorMessage('IRA: AI API key not configured. Go to Settings → IRA → AI API Key.');
             return;
@@ -143,52 +146,13 @@ async function fetchPRDiff(
 ): Promise<string> {
   const repoInfo = await detectRepo(workspaceRoot);
 
-  let scmProvider = config.get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
-  const remoteUrl = await execGit('git remote get-url origin', workspaceRoot).catch(() => '');
-  if (remoteUrl.includes('bitbucket')) {
-    scmProvider = 'bitbucket';
+  // Auth: resolve token via AuthProvider (auto-detects SCM, OAuth → SecretStorage → settings PAT)
+  const scmSession = await AuthProvider.getInstance().resolveScmSession(workspaceRoot);
+  if (!scmSession) {
+    throw new Error('Authentication required. Run "IRA: Sign In" from the command palette.');
   }
-
-  // Auth
-  let scmToken = '';
-  if (scmProvider === 'github') {
-    scmToken = config.get<string>('githubToken', '');
-    if (!scmToken) {
-      const isGHE = repoInfo.baseUrl !== undefined || config.get<string>('githubUrl', '') !== '';
-      if (isGHE) {
-        try {
-          const session = await vscode.authentication.getSession('github-enterprise', ['repo'], { createIfNone: false });
-          if (session) scmToken = session.accessToken;
-        } catch { /* ignore */ }
-      }
-      if (!scmToken) {
-        try {
-          const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
-          if (session) scmToken = session.accessToken;
-        } catch { /* ignore */ }
-      }
-      if (!scmToken) {
-        const signInChoice = await vscode.window.showWarningMessage(
-          'IRA: No GitHub token found. Sign in or set a token in settings.',
-          'Sign in to GHE', 'Sign in to GitHub', 'Open Settings',
-        );
-        if (signInChoice === 'Sign in to GHE') {
-          const session = await vscode.authentication.getSession('github-enterprise', ['repo'], { createIfNone: true });
-          scmToken = session.accessToken;
-        } else if (signInChoice === 'Sign in to GitHub') {
-          const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
-          scmToken = session.accessToken;
-        } else {
-          throw new Error('GitHub token required.');
-        }
-      }
-    }
-  } else {
-    scmToken = config.get<string>('bitbucketToken', '');
-    if (!scmToken) {
-      throw new Error('Bitbucket token not configured. Go to Settings → IRA → Bitbucket Token.');
-    }
-  }
+  const scmProvider = scmSession.provider === 'github-enterprise' ? 'github' : scmSession.provider;
+  const scmToken = scmSession.accessToken;
 
   const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
 
