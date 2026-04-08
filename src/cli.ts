@@ -14,6 +14,7 @@ import { createAIProvider } from "./ai/aiClient.js";
 import { generateTestCases } from "./core/testGenerator.js";
 import { trackRequirementCompletion } from "./core/requirementTracker.js";
 import { detectFramework } from "./frameworks/detector.js";
+import { resolveGitRoot } from "./utils/gitRoot.js";
 import type { TestFramework } from "./types/jira.js";
 
 const LICENSE_BANNER = `
@@ -27,7 +28,7 @@ const program = new Command();
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
-  .version("1.2.0")
+  .version("1.2.1")
   .hook("preAction", () => {
     console.log(LICENSE_BANNER);
   });
@@ -53,6 +54,7 @@ program
   .option("--jira-url <url>", "JIRA base URL (or IRA_JIRA_URL)")
   .option("--jira-email <email>", "JIRA email (or IRA_JIRA_EMAIL)")
   .option("--jira-token <token>", "JIRA API token (or IRA_JIRA_TOKEN)")
+  .option("--jira-type <type>", "JIRA type: cloud or server (auto-detects from URL if omitted)")
   .option("--jira-ticket <key>", "JIRA ticket key (e.g. PROJ-123)")
   .option("--jira-ac-field <field>", "Custom field ID for acceptance criteria")
   .option("--slack-webhook <url>", "Slack webhook URL for notifications")
@@ -96,7 +98,8 @@ program
         ...(opts.jiraUrl && { jiraUrl: opts.jiraUrl }),
         ...(opts.jiraEmail && { jiraEmail: opts.jiraEmail }),
         ...(opts.jiraToken && { jiraToken: opts.jiraToken }),
-        ...(opts.jiraTicket && { jiraTicket: opts.jiraTicket }),
+        ...(opts.jiraType && { jiraType: opts.jiraType }),
+        ...(opts.jiraTicket && { jiraTicket: opts.jiraTicket.toUpperCase() }),
         ...(opts.jiraAcField && { jiraAcField: opts.jiraAcField }),
         ...(opts.slackWebhook && { slackWebhook: opts.slackWebhook }),
         ...(opts.teamsWebhook && { teamsWebhook: opts.teamsWebhook }),
@@ -165,6 +168,7 @@ program
   .option("--jira-email <email>", "JIRA email (or IRA_JIRA_EMAIL)")
   .option("--jira-token <token>", "JIRA API token (or IRA_JIRA_TOKEN)")
   .option("--jira-ac-field <field>", "Custom field ID for acceptance criteria")
+  .option("--jira-type <type>", "JIRA type: cloud or server (auto-detects from URL if omitted)")
   .option("--test-framework <framework>", "Test framework: jest, vitest, mocha, playwright, cypress, gherkin, pytest, junit (default: jest)")
   .option("--ai-provider <provider>", "AI provider")
   .option("--ai-model <model>", "AI model to use")
@@ -202,16 +206,17 @@ program
 
       // Resolve JIRA config
       const jiraUrl = opts.jiraUrl ?? process.env.IRA_JIRA_URL;
-      const jiraEmail = opts.jiraEmail ?? process.env.IRA_JIRA_EMAIL;
+      const jiraEmail = opts.jiraEmail ?? process.env.IRA_JIRA_EMAIL ?? '';
       const jiraToken = opts.jiraToken ?? process.env.IRA_JIRA_TOKEN;
-      if (!jiraUrl || !jiraEmail || !jiraToken) {
-        throw new Error("JIRA credentials required. Set --jira-url, --jira-email, --jira-token (or IRA_JIRA_* env vars).");
+      if (!jiraUrl || !jiraToken) {
+        throw new Error("JIRA credentials required. Set --jira-url and --jira-token (or IRA_JIRA_* env vars). For Cloud, also set --jira-email.");
       }
 
       const jiraClient = new JiraClient({
         baseUrl: jiraUrl,
         email: jiraEmail,
         token: jiraToken,
+        ...(opts.jiraType && { type: opts.jiraType as 'cloud' | 'server' }),
         ...(opts.jiraAcField && { acceptanceCriteriaField: opts.jiraAcField }),
       });
 
@@ -231,12 +236,12 @@ program
       console.log();
 
       // Fetch JIRA issue
-      const jiraIssue = await jiraClient.fetchIssue(opts.jiraTicket);
+      const jiraIssue = await jiraClient.fetchIssue(opts.jiraTicket.toUpperCase());
 
       // Detect framework (soft fail)
       let framework: Awaited<ReturnType<typeof detectFramework>> = null;
       try {
-        framework = await detectFramework(process.cwd());
+        framework = await detectFramework(resolveGitRoot());
       } catch {
         // Ignore
       }

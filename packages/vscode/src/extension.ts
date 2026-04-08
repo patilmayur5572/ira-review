@@ -8,6 +8,8 @@ import { reviewPR } from './commands/reviewPR';
 import { generatePRDescription } from './commands/generatePRDescription';
 import { generateTests } from './commands/generateTests';
 import { reviewFile } from './commands/reviewFile';
+import { showRisk } from './commands/showRisk';
+import { validateJiraAC } from './commands/validateJiraAC';
 import { createStatusBar, updateStatusBar } from './providers/statusBarProvider';
 import { IraIssuesProvider } from './providers/treeViewProvider';
 import { IraCodeLensProvider } from './providers/codeLensProvider';
@@ -17,7 +19,9 @@ import { ReviewHistoryStore } from './services/reviewHistoryStore';
 import { activateAutoReview } from './services/autoReviewer';
 import { IraHistoryProvider } from './providers/historyTreeProvider';
 import { DashboardProvider } from './providers/dashboardProvider';
+import { setupOllama } from './services/ollamaSetup';
 import type { ReviewResult } from 'ira-review';
+import * as msg from './utils/messages';
 
 let lastResult: ReviewResult | null = null;
 
@@ -47,6 +51,21 @@ export function activate(context: vscode.ExtensionContext): void {
   vscode.window.registerTreeDataProvider('ira-issues', treeProvider);
   vscode.window.registerTreeDataProvider('ira-history', historyProvider);
   vscode.window.registerWebviewViewProvider(DashboardProvider.viewType, dashboardProvider);
+
+  // First-run welcome — show once per install
+  const hasSeenWelcome = context.globalState.get<boolean>('ira.welcomeShown');
+  if (!hasSeenWelcome) {
+    context.globalState.update('ira.welcomeShown', true);
+    vscode.window.showInformationMessage(
+      'Welcome to IRA — your AI code review assistant 👋',
+      { modal: true },
+      'Explore Commands',
+    ).then((action) => {
+      if (action === 'Explore Commands') {
+        vscode.commands.executeCommand('workbench.action.quickOpen', '> IRA: ');
+      }
+    });
+  }
 
   // Activate auto-review on save (Pro feature)
   activateAutoReview(context, diagnosticCollection);
@@ -79,14 +98,8 @@ export function activate(context: vscode.ExtensionContext): void {
       reviewFile(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider)
     ),
     vscode.commands.registerCommand('ira.generateTests', () => generateTests()),
-    vscode.commands.registerCommand('ira.showRisk', () => {
-      const result = getLastResult();
-      if (result?.risk) {
-        vscode.window.showInformationMessage(`IRA Risk: ${result.risk.level} (${result.risk.score}/${result.risk.maxScore})`);
-      } else {
-        vscode.window.showInformationMessage('IRA: No risk data — run "IRA: Review Current PR" first.');
-      }
-    }),
+    vscode.commands.registerCommand('ira.validateJiraAC', () => validateJiraAC()),
+    vscode.commands.registerCommand('ira.showRisk', () => showRisk()),
     vscode.commands.registerCommand('ira.configure', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', 'ira')
     ),
@@ -97,8 +110,15 @@ export function activate(context: vscode.ExtensionContext): void {
       license.deactivateLicense()
     ),
     vscode.commands.registerCommand('ira.signIn', async () => {
-      const scmProvider = vscode.workspace.getConfiguration('ira').get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
-      await auth.signIn(scmProvider);
+      const choice = await vscode.window.showQuickPick(
+        [
+          { label: '$(github) GitHub', id: 'github' as const },
+          { label: '$(globe) Bitbucket', id: 'bitbucket' as const },
+        ],
+        { placeHolder: msg.prompts.signInTo },
+      );
+      if (!choice) return;
+      await auth.signIn(choice.id);
     }),
     vscode.commands.registerCommand('ira.signOut', () => auth.signOut()),
     vscode.commands.registerCommand('ira.showIssueDetail', async (detail: string) => {
@@ -113,26 +133,82 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
     vscode.commands.registerCommand('ira.initRules', async () => {
-      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!workspaceRoot) {
-        vscode.window.showErrorMessage('IRA: No workspace folder open.');
-        return;
-      }
+      const cp = await import('child_process');
       const fs = await import('fs');
       const path = await import('path');
+
+      const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!wsRoot) {
+        vscode.window.showErrorMessage(msg.noWorkspace());
+        return;
+      }
+
+      // Find all git repos under the workspace
+      const findRepos = (dir: string): string[] => {
+        const repos: string[] = [];
+        try {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+            const child = path.join(dir, entry.name);
+            if (fs.existsSync(path.join(child, '.git'))) {
+              repos.push(child);
+            }
+          }
+        } catch { /* ignore */ }
+        // Also check if the workspace root itself is a repo
+        if (fs.existsSync(path.join(dir, '.git'))) {
+          repos.unshift(dir);
+        }
+        return repos;
+      };
+
+      const repos = findRepos(wsRoot);
+      let workspaceRoot: string;
+
+      if (repos.length === 0) {
+        // No git repos found, fall back to workspace root
+        workspaceRoot = wsRoot;
+      } else if (repos.length === 1) {
+        workspaceRoot = repos[0];
+      } else {
+        // Multiple repos — let user pick
+        const pick = await vscode.window.showQuickPick(
+          repos.map(r => ({ label: path.basename(r), description: r, repoPath: r })),
+          { placeHolder: msg.prompts.pickProject },
+        );
+        if (!pick) return;
+        workspaceRoot = pick.repoPath;
+      }
+
       const filePath = path.join(workspaceRoot, '.ira-rules.json');
       if (fs.existsSync(filePath)) {
-        vscode.window.showWarningMessage('IRA: .ira-rules.json already exists.');
+        vscode.window.showWarningMessage(msg.rulesAlreadyExist());
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
         await vscode.window.showTextDocument(doc);
         return;
       }
-      const template = JSON.stringify({ rules: [] }, null, 2);
+      const template = JSON.stringify({
+        rules: [
+          {
+            id: "no-console-log",
+            message: "Avoid console.log in production code — use a structured logger instead",
+            severity: "MAJOR",
+            bad: "console.log('user data:', user);",
+            good: "logger.info('User loaded', { userId: user.id });",
+            paths: ["src/**"],
+          },
+        ],
+        sensitiveAreas: [
+          "src/services/payment/**",
+          "**/auth/**",
+        ],
+      }, null, 2);
       fs.writeFileSync(filePath, template);
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
       await vscode.window.showTextDocument(doc);
-      vscode.window.showInformationMessage('IRA: Created .ira-rules.json. Add your team rules and commit.');
+      vscode.window.showInformationMessage(msg.rulesCreated());
     }),
+    vscode.commands.registerCommand('ira.setupOllama', () => setupOllama()),
     vscode.commands.registerCommand('ira.applyFix', async (comment) => {
       const { applyFix } = await import('./services/fixApplicator');
       await applyFix(comment);

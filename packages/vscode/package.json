@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -103,6 +103,10 @@
       {
         "command": "ira.initRules",
         "title": "IRA: Init Rules File"
+      },
+      {
+        "command": "ira.validateJiraAC",
+        "title": "IRA: Validate JIRA AC"
       }
     ],
     "menus": {
@@ -200,6 +204,12 @@
           "type": "string",
           "default": "",
           "description": "SonarQube project key"
+        },
+        "ira.jiraType": {
+          "type": "string",
+          "enum": ["cloud", "server"],
+          "default": "",
+          "description": "JIRA type: cloud (Atlassian-hosted) or server (self-hosted / Data Center)"
         },
         "ira.jiraUrl": {
           "type": "string",

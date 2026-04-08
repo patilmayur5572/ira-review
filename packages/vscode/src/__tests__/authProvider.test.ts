@@ -253,7 +253,7 @@ describe('AuthProvider', () => {
       { createIfNone: true },
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'IRA: Signed in as ghUser',
+      'Signed in as ghUser 👋',
     );
   });
 
@@ -271,7 +271,7 @@ describe('AuthProvider', () => {
     const session = await auth.signIn('github');
     expect(session).toBeNull();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      'IRA: GitHub sign-in was cancelled or failed.',
+      'GitHub sign-in was cancelled — try again when ready',
     );
   });
 
@@ -290,7 +290,7 @@ describe('AuthProvider', () => {
       'bb-new-token',
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'IRA: Bitbucket token saved securely.',
+      'Bitbucket token saved securely 🔐',
     );
   });
 
@@ -320,7 +320,7 @@ describe('AuthProvider', () => {
     expect(ctx.secrets.delete).toHaveBeenCalledWith('ira-jira-token');
     expect(ctx.secrets.delete).toHaveBeenCalledWith('ira-ai-api-key');
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'IRA: Signed out.',
+      'Signed out — see you next time',
     );
 
     // After sign out, getSession should not return cached value

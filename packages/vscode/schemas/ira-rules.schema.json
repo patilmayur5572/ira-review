@@ -4,6 +4,15 @@
   "required": ["rules"],
   "additionalProperties": false,
   "properties": {
+    "sensitiveAreas": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "description": "Glob patterns for sensitive file paths — AI reviews these with extra scrutiny and risk is amplified",
+      "items": {
+        "type": "string"
+      }
+    },
     "rules": {
       "type": "array",
       "maxItems": 30,

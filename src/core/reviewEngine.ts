@@ -6,8 +6,8 @@ import type { AcceptanceValidationResult, TestGenerationResult, RequirementCompl
 import { SonarClient } from "./sonarClient.js";
 import { filterIssues, groupIssuesByFile } from "./issueProcessor.js";
 import { detectFramework } from "../frameworks/detector.js";
-import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "../ai/promptBuilder.js";
-import { loadRulesFile, filterRulesByPath, formatRulesForPrompt } from "../utils/rulesFile.js";
+import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, annotateDiffWithLineNumbers } from "../ai/promptBuilder.js";
+import { loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "../utils/rulesFile.js";
 import { createAIProvider } from "../ai/aiClient.js";
 import type { AIFoundIssue } from "../ai/promptBuilder.js";
 import { BitbucketClient } from "../scm/bitbucket.js";
@@ -22,6 +22,7 @@ import { generateTestCases } from "./testGenerator.js";
 import { trackRequirementCompletion } from "./requirementTracker.js";
 import { buildSummary } from "./summaryBuilder.js";
 import { Notifier } from "../integrations/notifier.js";
+import { resolveGitRoot } from "../utils/gitRoot.js";
 
 const AI_CONCURRENCY = 3;
 
@@ -40,7 +41,7 @@ export class ReviewEngine {
   async run(): Promise<ReviewResult> {
     const { ai, pullRequestId } = this.config;
     const warnings: string[] = [];
-    const repoPath = this.config.repoPath ?? process.cwd();
+    const repoPath = this.config.repoPath ?? resolveGitRoot();
     const scmClient = this.createSCMClient();
 
     // 1. Fetch issues from SonarQube (if configured)
@@ -68,6 +69,7 @@ export class ReviewEngine {
     if (teamRules.length > 0) {
       console.log(`  Team rules: ${teamRules.length} loaded from .ira-rules.json`);
     }
+    const sensitiveAreas = loadSensitiveAreas(repoPath);
 
     // 5. Code complexity analysis (soft fail, requires Sonar)
     let complexity: ComplexityReport | null = null;
@@ -145,7 +147,8 @@ export class ReviewEngine {
         AI_CONCURRENCY,
         async ({ filePath, issue }): Promise<ReviewComment | null> => {
           try {
-            const fileDiff = diffByFile.get(filePath) ?? null;
+            const rawDiff = diffByFile.get(filePath) ?? null;
+            const fileDiff = rawDiff ? annotateDiffWithLineNumbers(rawDiff) : null;
             const sourceFile = sourceByFile.get(filePath) ?? null;
             const prompt = buildPrompt(issue, framework, fileDiff, sourceFile);
             const useCritical = criticalProvider && (issue.severity === "BLOCKER" || issue.severity === "CRITICAL");
@@ -181,7 +184,10 @@ export class ReviewEngine {
             const sourceFile = sourceByFile.get(filePath) ?? null;
             const filteredRules = filterRulesByPath(teamRules, filePath);
             const rulesSection = formatRulesForPrompt(filteredRules);
-            const prompt = buildStandalonePrompt(filePath, diff, framework, sourceFile, rulesSection);
+            const sensitiveMatch = matchSensitiveArea(sensitiveAreas, filePath);
+            const sensitiveContext = sensitiveMatch ? formatSensitiveAreaForPrompt(sensitiveMatch) : undefined;
+            const annotatedDiff = annotateDiffWithLineNumbers(diff);
+            const prompt = buildStandalonePrompt(filePath, annotatedDiff, framework, sourceFile, rulesSection, sensitiveContext);
             const response = await aiProvider.review(prompt);
             // explanation field contains a JSON-encoded array of issues
             const foundIssues = parseStandaloneResponse(response.explanation);
@@ -240,11 +246,13 @@ export class ReviewEngine {
     const effectiveFiltered = reviewMode === "standalone"
       ? filterIssues(allIssues, this.config.minSeverity)
       : filtered;
+    const hasSensitiveFiles = [...(diffByFile.keys())].some(fp => matchSensitiveArea(sensitiveAreas, fp) !== null);
     const risk = calculateRisk({
       allIssues,
       filteredIssues: effectiveFiltered,
       complexity,
       filesChanged,
+      sensitiveFileMultiplier: hasSensitiveFiles ? 2 : 1,
     });
 
     // 9. JIRA acceptance criteria validation (soft fail)
