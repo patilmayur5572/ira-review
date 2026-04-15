@@ -1,23 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import './setup';
-
-// Reproduce the parseDiffByFile function for testing (mirrors src/commands/reviewPR.ts)
-function parseDiffByFile(diff: string): Map<string, string> {
-  const fileMap = new Map<string, string>();
-  const fileSections = diff.split(/^diff --git /m);
-  for (const section of fileSections) {
-    if (!section.trim()) continue;
-
-    // Standard: diff --git a/file.ts b/file.ts
-    // Bitbucket Server: diff --git src://file.ts dst://file.ts
-    const headerMatch = section.match(/^(?:a\/|src:\/\/)(.+?)\s+(?:b\/|dst:\/\/)(.+)/);
-    if (!headerMatch) continue;
-    const bPath = headerMatch[2];
-    if (bPath === '/dev/null') continue;
-    fileMap.set(bPath, `diff --git ${section}`);
-  }
-  return fileMap;
-}
+import { parseDiffByFile } from '../utils/diff';
 
 describe('parseDiffByFile', () => {
   it('parses standard git diff format', () => {
@@ -52,6 +35,17 @@ describe('parseDiffByFile', () => {
 +++ /dev/null
 @@ -1,5 +0,0 @@
 -deleted content
+`;
+    const result = parseDiffByFile(diff);
+    expect(result.size).toBe(0);
+  });
+
+  it('skips deleted files (+++ /dev/null in body)', () => {
+    const diff = `diff --git a/removed.ts b/removed.ts
+--- a/removed.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-old code
 `;
     const result = parseDiffByFile(diff);
     expect(result.size).toBe(0);

@@ -15,28 +15,66 @@ No install required. Drop `--dry-run` to post comments directly on the PR. For B
 ## What You Get
 
 ```
-IRA: Found 3 issues (Risk: MEDIUM - 47/100)
+🔍 IRA — Scanning PR before your reviewers do
 
-src/routes/todos.ts
-  [BLOCKER]  SQL injection risk - user input passed directly to query
-  [MAJOR]    Missing database index on frequently queried column
+  ✓ Config loaded — AI-only mode, openai, PR #42
+  ✓ Diff loaded — 4 files changed
+  ✓ Review complete — 3 issues found
 
-src/middleware/auth.ts
-  [CRITICAL] JWT secret hardcoded - move to environment variable
+────────────────────────────────────────────────────────────
+📄 src/routes/auth.ts:31
+   Rule:     IRA/security (CRITICAL)
+   Message:  User input passed directly to SQL query
+   Explain:  The username parameter is concatenated into a SQL string,
+             creating a SQL injection vector.
+   Impact:   Attacker could execute arbitrary SQL and gain database control.
+   Fix:      BEFORE: `db.query(`SELECT * FROM users WHERE name = ${username}`)`
+             → AFTER: `db.query('SELECT * FROM users WHERE name = $1', [username])`
 
-JIRA AC Validation (PROJ-1234):          # when --jira-ticket is provided
-  [PASS] User can create a todo item
-  [FAIL] Input is validated before save
-  [PASS] Error returns 422 with details
+────────────────────────────────────────────────────────────
+📄 src/middleware/cors.ts:8
+   Rule:     IRA/error-handling (MAJOR)
+   Message:  Empty catch block swallows CORS validation errors
+   Explain:  fetch() failure in CORS preflight is caught and ignored,
+             leaving the request in an undefined state.
+   Impact:   Silent CORS failures in production with no logging.
+   Fix:      BEFORE: `} catch {}`
+             → AFTER: `} catch (err) { logger.error('CORS preflight failed', err); throw err; }`
+
+# 🔍 IRA Review Summary
+
+## 🟡 Risk: MEDIUM (38/100)
+
+| Metric        | Value    |
+|---------------|----------|
+| Review mode   | AI-only  |
+| Total issues  | 3        |
+| Reviewed (AI) | 3        |
+| Framework     | react    |
+
+## ✅ Requirements: AUTH-234 — 83% Complete (5/6)
+
+  ✅ OAuth2 login flow implemented with Google provider
+  ✅ JWT tokens generated on successful authentication
+  ✅ Refresh token rotation with 7-day expiry
+  ❌ Input validation on login endpoint — no email format check
+  ✅ Logout endpoint clears session and revokes token
+  ✅ Rate limiting on login attempts
+
+  ⚠️ Edge Cases Not Covered
+  - What happens when Google OAuth is unreachable?
+  - Token refresh during concurrent requests?
 ```
 
-Each issue is posted as an inline comment on the exact PR line with explanation, impact, and suggested fix.
+Each issue is posted as an inline comment on the exact PR line with explanation, impact, and a minimal BEFORE → AFTER fix.
 
 **Features:**
 
+- Evidence-based reviews — 7 categories (security, business logic, race conditions, data consistency, async, error handling, defensive coding), each with explicit false-positive exclusions. Issues without concrete evidence are filtered out.
 - Risk scoring (0-100) with severity breakdown and PR labels
-- Inline AI comments with explanation, impact, and suggested fix
-- JIRA acceptance criteria validation with per-criterion pass/fail
+- Inline AI comments with explanation, impact, and minimal BEFORE → AFTER fix
+- JIRA acceptance criteria validation with per-criterion pass/fail and edge case detection
+- JIRA AC auto-detection — finds AC from custom field or description automatically
 - Custom team review rules via `.ira-rules.json` (see below)
 - Test case generation from JIRA tickets (Jest, Vitest, Playwright, etc.)
 - Comment deduplication across re-runs
@@ -53,6 +91,8 @@ Commit a `.ira-rules.json` to your repo root. Rules are injected into the AI pro
   "rules": [
     {
       "message": "Use parameterized queries for all SQL operations",
+      "bad": "db.query(`SELECT * FROM users WHERE id = ${userId}`)",
+      "good": "db.query('SELECT * FROM users WHERE id = $1', [userId])",
       "severity": "CRITICAL",
       "paths": ["src/db/**", "src/api/**"]
     },
@@ -62,15 +102,26 @@ Commit a `.ira-rules.json` to your repo root. Rules are injected into the AI pro
       "good": "logger.info('User created', { userId: user.id });",
       "severity": "MINOR"
     }
+  ],
+  "sensitiveAreas": [
+    "src/services/payment/**",
+    "**/auth/**",
+    "src/config/database.*"
   ]
 }
 ```
 
+**Rules:**
 - `message` + `severity` required. `bad`/`good` examples and `paths` are optional.
 - Rules without `paths` apply to all files. Rules with `paths` match only those directories.
-- Maximum 30 rules. Deterministic checks (naming, formatting) belong in ESLint.
+- Maximum 50 rules. Deterministic checks (naming, formatting) belong in ESLint.
 - Invalid rules are skipped with a warning, not a crash.
 - No license gating. Works in CLI, CI/CD, and VS Code extension.
+
+**Sensitive Areas:**
+- Files matching a sensitive area glob get extra scrutiny during review and Apply Fix.
+- Labels are derived from the glob automatically (`src/services/payment/**` → "payment").
+- Sensitive file findings get a higher weight in risk scoring.
 
 ---
 
@@ -170,7 +221,7 @@ Tokens are read from environment variables or CLI flags at runtime. Nothing is w
 
 ## License
 
-[Proprietary](LICENSE)
+[MIT](LICENSE)
 
 ---
 

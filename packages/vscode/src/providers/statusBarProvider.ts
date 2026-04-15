@@ -43,3 +43,9 @@ export function updateStatusBar(statusBar: vscode.StatusBarItem, risk: RiskRepor
 
   statusBar.tooltip = `Risk: ${risk.level} (${risk.score}/${risk.maxScore})`;
 }
+
+export function updateStatusBarUsage(statusBar: vscode.StatusBarItem): void {
+  statusBar.text = '$(shield) IRA';
+  statusBar.tooltip = 'IRA — AI code review assistant';
+  statusBar.color = undefined;
+}

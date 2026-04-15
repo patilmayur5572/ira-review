@@ -1,5 +1,5 @@
 import type { GitHubConfig } from "../types/config.js";
-import type { ReviewComment, SCMProvider } from "../types/review.js";
+import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 export class GitHubClient implements SCMProvider {
@@ -64,6 +64,22 @@ export class GitHubClient implements SCMProvider {
     });
   }
 
+  async getPRState(pullRequestId: string): Promise<PRState> {
+    const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls/${pullRequestId}`;
+    const response = await fetchWithTimeout(url, { headers: this.headers });
+    if (response.status === 404) {
+      throw new Error(
+        `PR #${pullRequestId} was not found — it may have been deleted.\n` +
+        `  💡 Double-check the PR number and try again.`,
+      );
+    }
+    if (!response.ok) return "unknown";
+    const data = (await response.json()) as { state: string; merged: boolean };
+    if (data.merged) return "merged";
+    if (data.state === "closed") return "closed";
+    return "open";
+  }
+
   async getDiff(pullRequestId: string): Promise<string> {
     const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls/${pullRequestId}`;
 
@@ -85,6 +101,34 @@ export class GitHubClient implements SCMProvider {
 
       return response.text();
     });
+  }
+
+  async getDiffPerFile(pullRequestId: string): Promise<Map<string, string>> {
+    const fileMap = new Map<string, string>();
+    let page = 1;
+
+    while (true) {
+      const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls/${pullRequestId}/files?per_page=100&page=${page}`;
+      const data = await withRetry(async () => {
+        const response = await fetchWithTimeout(url, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(`GitHub API error (${response.status}): ${text}`, response.status);
+        }
+        return response.json() as Promise<Array<{ filename: string; patch?: string; status: string }>>;
+      });
+
+      for (const file of data) {
+        if (file.status === "removed" || !file.patch) continue;
+        const unified = `diff --git a/${file.filename} b/${file.filename}\n--- a/${file.filename}\n+++ b/${file.filename}\n${file.patch}`;
+        fileMap.set(file.filename, unified);
+      }
+
+      if (data.length < 100) break;
+      page++;
+    }
+
+    return fileMap;
   }
 
   async getFileContent(

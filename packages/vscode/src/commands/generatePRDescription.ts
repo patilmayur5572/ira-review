@@ -10,7 +10,8 @@ import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { resolveAiApiKey } from '../utils/credentialPrompts';
 import * as msg from '../utils/messages';
-import * as cp from 'child_process';
+import { execGit, detectRepo, detectDefaultBranch } from '../utils/git';
+import { BitbucketServerDiffResponse, convertBBServerDiffToUnified } from '../utils/diff';
 
 const MAX_DIFF_LENGTH = 100_000;
 
@@ -35,6 +36,18 @@ export async function generatePRDescription(): Promise<void> {
 
   if (!choice) return;
 
+  // Ask for PR number before showing progress toast
+  let prNumber: string | undefined;
+  if (choice.value === 'pr') {
+    const branch = await execGit('git branch --show-current', workspaceRoot).catch(() => '');
+    prNumber = await vscode.window.showInputBox({
+      prompt: branch ? msg.prompts.prNumber(branch) : 'What\'s the PR number?',
+      placeHolder: msg.prompts.prNumberPlaceholder,
+      ignoreFocusOut: true,
+    });
+    if (!prNumber) return;
+  }
+
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: msg.progress.generatePRDesc, cancellable: false },
     async () => {
@@ -43,7 +56,7 @@ export async function generatePRDescription(): Promise<void> {
         let fullDiff: string;
 
         if (choice.value === 'pr') {
-          fullDiff = await fetchPRDiff(config, workspaceRoot);
+          fullDiff = await fetchPRDiff(config, workspaceRoot, prNumber!);
         } else {
           const defaultBranch = await detectDefaultBranch(workspaceRoot);
           // Include both committed and uncommitted changes against the default branch
@@ -69,12 +82,23 @@ export async function generatePRDescription(): Promise<void> {
 
           if (jiraUrl && jiraEmail && jiraToken) {
             try {
-              const jira = new JiraClient({ baseUrl: jiraUrl, email: jiraEmail, token: jiraToken });
+              const acField = config.get<string>('jiraAcField', '') || undefined;
+              const jira = new JiraClient({ baseUrl: jiraUrl, email: jiraEmail, token: jiraToken, acceptanceCriteriaField: acField });
               const issue = await jira.fetchIssue(ticketMatch[1]);
-              jiraContext = `\n\nJIRA Ticket: ${ticketMatch[1]}\nSummary: ${issue.fields.summary}\nAcceptance Criteria:\n${issue.fields.acceptanceCriteria || 'N/A'}\n`;
-            } catch {
-              jiraContext = `\n\nJIRA Ticket: ${ticketMatch[1]} (could not fetch details)\n`;
+              const acSource = config.get<string>('jiraAcSource', 'both');
+              const customFieldAC = issue.fields.acceptanceCriteria?.trim() || '';
+              const descriptionAC = issue.fields.description?.trim() || '';
+              let ac = '';
+              if (acSource === 'customField') ac = customFieldAC;
+              else if (acSource === 'description') ac = descriptionAC;
+              else ac = customFieldAC || descriptionAC;
+              const ticketUrl = `${jiraUrl.replace(/\/+$/, '')}/browse/${ticketMatch[1]}`;
+              jiraContext = `\n\nJIRA Ticket: [${ticketMatch[1]}](${ticketUrl})\nSummary: ${issue.fields.summary}\nDescription:\n${issue.fields.description || 'No description'}\nAcceptance Criteria:\n${ac || 'Not defined in JIRA'}\n`;
+            } catch (err) {
+              jiraContext = `\n\nJIRA Ticket: ${ticketMatch[1]} (could not fetch details: ${err instanceof Error ? err.message : 'unknown error'})\n`;
             }
+          } else {
+            jiraContext = `\n\nJIRA Ticket: ${ticketMatch[1]} (JIRA credentials not configured — set jiraUrl, jiraEmail, and jiraToken in IRA settings)\n`;
           }
         }
 
@@ -118,11 +142,16 @@ export async function generatePRDescription(): Promise<void> {
 
 function buildPRDescriptionPrompt(diff: string, jiraContext: string, ticketId?: string): string {
   const jiraSection = ticketId
-    ? `\n## JIRA Ticket & AC Status\nTicket: ${ticketId}\nFor each acceptance criterion, indicate whether it is met by the changes.\n`
+    ? `\n## Acceptance Criteria Validation\nFor each acceptance criterion listed above, create a table with columns: AC, Status (✅ Covered / ⚠️ Partially Covered / ❌ Not Covered), and Evidence (cite the specific file or code change from the diff that satisfies it). If no AC is defined, extract testable criteria from the ticket summary and description, then validate those.\n`
     : '';
 
   return `You are a senior software engineer. Generate a professional Pull Request description based on the following diff.
 ${jiraContext}
+IMPORTANT RULES:
+- Use ONLY the JIRA ticket link provided above. NEVER fabricate or guess JIRA URLs.
+- Use ONLY the acceptance criteria provided above. If it says "Not defined in JIRA", state that AC is not defined — do NOT invent criteria.
+- Do NOT include any information that is not directly supported by the diff or the JIRA context above.
+
 Structure the description with these sections:
 ## Summary
 A concise overview of what this PR does and why.
@@ -148,6 +177,7 @@ ${diff}
 async function fetchPRDiff(
   config: vscode.WorkspaceConfiguration,
   workspaceRoot: string,
+  prNumber: string,
 ): Promise<string> {
   const repoInfo = await detectRepo(workspaceRoot);
 
@@ -160,16 +190,6 @@ async function fetchPRDiff(
   const scmToken = scmSession.accessToken;
 
   const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
-
-  const branch = await execGit('git branch --show-current', workspaceRoot).catch(() => '');
-  const prNumber = await vscode.window.showInputBox({
-    prompt: branch ? msg.prompts.prNumber(branch) : 'What\'s the PR number?',
-    placeHolder: msg.prompts.prNumberPlaceholder,
-  });
-
-  if (!prNumber) {
-    throw new Error('PR number is required.');
-  }
 
   const bbUrl = config.get<string>('bitbucketUrl', '');
 
@@ -200,81 +220,3 @@ async function fetchPRDiff(
   }
 }
 
-interface BitbucketServerDiffResponse {
-  diffs: Array<{
-    source?: { toString: string };
-    destination?: { toString: string };
-    hunks?: Array<{
-      segments: Array<{
-        type: 'ADDED' | 'REMOVED' | 'CONTEXT';
-        lines: Array<{ line: string; source?: number; destination?: number }>;
-      }>;
-    }>;
-  }>;
-}
-
-function convertBBServerDiffToUnified(json: BitbucketServerDiffResponse): string {
-  const parts: string[] = [];
-  for (const diff of json.diffs ?? []) {
-    const src = diff.source?.toString ?? '/dev/null';
-    const dst = diff.destination?.toString ?? '/dev/null';
-    parts.push(`diff --git a/${src} b/${dst}`);
-    parts.push(`--- a/${src}`);
-    parts.push(`+++ b/${dst}`);
-    for (const hunk of diff.hunks ?? []) {
-      parts.push('@@ -1,0 +1,0 @@');
-      for (const seg of hunk.segments) {
-        const prefix = seg.type === 'ADDED' ? '+' : seg.type === 'REMOVED' ? '-' : ' ';
-        for (const line of seg.lines) {
-          parts.push(`${prefix}${line.line}`);
-        }
-      }
-    }
-  }
-  return parts.join('\n');
-}
-
-function detectRepo(cwd: string): Promise<{ owner: string; repo: string; baseUrl?: string }> {
-  return execGit('git remote get-url origin', cwd).then(url => {
-    const ghMatch = url.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-    if (ghMatch) return { owner: ghMatch[1], repo: ghMatch[2] };
-
-    const bbServerMatch = url.match(/https?:\/\/[^/]+\/scm\/([^/]+)\/([^/.]+)/);
-    if (bbServerMatch) return { owner: bbServerMatch[1], repo: bbServerMatch[2] };
-
-    const bbSshMatch = url.match(/@[^/]+[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
-    if (bbSshMatch) return { owner: bbSshMatch[1], repo: bbSshMatch[2] };
-
-    const gheMatch = url.match(/https?:\/\/([^/]+)\/([^/]+)\/([^/.]+)/);
-    if (gheMatch) return { owner: gheMatch[2], repo: gheMatch[3], baseUrl: `https://${gheMatch[1]}/api/v3` };
-
-    return { owner: '', repo: '' };
-  }).catch(() => ({ owner: '', repo: '' }));
-}
-
-async function detectDefaultBranch(cwd: string): Promise<string> {
-  // Try origin/HEAD symbolic ref first (most reliable)
-  try {
-    const ref = await execGit('git symbolic-ref refs/remotes/origin/HEAD', cwd);
-    return ref.replace('refs/remotes/origin/', '');
-  } catch { /* ignore */ }
-
-  // Fall back: check if main or master exists
-  for (const branch of ['main', 'master']) {
-    try {
-      await execGit(`git rev-parse --verify ${branch}`, cwd);
-      return branch;
-    } catch { /* ignore */ }
-  }
-
-  return 'main';
-}
-
-function execGit(command: string, cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cp.exec(command, { cwd }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout.trim());
-    });
-  });
-}

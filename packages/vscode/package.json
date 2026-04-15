@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "1.2.1",
+  "version": "2.0.0",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -64,25 +64,18 @@
         "command": "ira.generateTests",
         "title": "IRA: Generate Tests"
       },
-      {
-        "command": "ira.showRisk",
-        "title": "IRA: Show Risk Score"
-      },
+
       {
         "command": "ira.configure",
         "title": "IRA: Configure"
       },
       {
-        "command": "ira.activateLicense",
-        "title": "IRA: Activate Pro License"
-      },
-      {
-        "command": "ira.deactivateLicense",
-        "title": "IRA: Deactivate Pro License"
-      },
-      {
         "command": "ira.applyFix",
         "title": "IRA: Apply Fix"
+      },
+      {
+        "command": "ira.dismissIssue",
+        "title": "IRA: Dismiss Issue"
       },
       {
         "command": "ira.showIssueDetail",
@@ -107,6 +100,10 @@
       {
         "command": "ira.validateJiraAC",
         "title": "IRA: Validate JIRA AC"
+      },
+      {
+        "command": "ira.suggestAC",
+        "title": "IRA: Suggest Acceptance Criteria"
       }
     ],
     "menus": {
@@ -117,6 +114,10 @@
         },
         {
           "command": "ira.showIssueDetail",
+          "when": "false"
+        },
+        {
+          "command": "ira.dismissIssue",
           "when": "false"
         }
       ]
@@ -226,22 +227,25 @@
           "default": "",
           "description": "JIRA API token"
         },
+        "ira.jiraAcField": {
+          "type": "string",
+          "default": "",
+          "description": "JIRA custom field ID for Acceptance Criteria (e.g. customfield_10035). Leave empty to auto-detect."
+        },
+        "ira.jiraAcSource": {
+          "type": "string",
+          "enum": [
+            "customField",
+            "description",
+            "both"
+          ],
+          "default": "both",
+          "description": "Where to read acceptance criteria from: custom field, description, or both (tries custom field first, falls back to description)"
+        },
         "ira.autoReviewOnSave": {
           "type": "boolean",
           "default": false,
-          "description": "⭐ Pro: Automatically review files on save"
-        },
-        "ira.polarOrganizationId": {
-          "type": "string",
-          "default": "",
-          "description": "Polar.sh Organization ID for license validation",
-          "scope": "application"
-        },
-        "ira.proCheckoutUrl": {
-          "type": "string",
-          "default": "https://polar.sh",
-          "description": "Polar.sh checkout URL for Pro upgrade",
-          "scope": "application"
+          "description": "Automatically review files on save"
         },
         "ira.slackWebhookUrl": {
           "type": "string",

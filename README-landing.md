@@ -188,4 +188,4 @@ Suggested Fix: Use parameterized queries:
 
 ## License
 
-[Proprietary](LICENSE). See LICENSE file for details.
+[MIT](LICENSE)

@@ -58,6 +58,7 @@ export interface IraConfig {
   notifications?: NotificationConfig;
   generateTests?: boolean;
   testFramework?: TestFramework;
+  jiraAcSource?: "customField" | "description" | "both";
 }
 
 export type RiskLevelThreshold = "low" | "medium" | "high" | "critical";

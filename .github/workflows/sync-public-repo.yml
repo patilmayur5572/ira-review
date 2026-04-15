@@ -24,15 +24,21 @@ jobs:
           path: public-repo
           fetch-depth: 0
 
-      - name: Sync files to public repo
+      - name: Sync full source to public repo
         run: |
-          # README and docs
-          cp README.md public-repo/README.md
-          cp LICENSE public-repo/LICENSE
-
-          # Images and screenshots
-          mkdir -p public-repo/docs/images
-          cp docs/images/* public-repo/docs/images/
+          # Sync everything except files that should stay private
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='!.env.example' \
+            --exclude='IRA_VSCODE_MASTERPLAN.md' \
+            --exclude='ROADMAP.md' \
+            --exclude='demos' \
+            --exclude='.DS_Store' \
+            ./ public-repo/
 
       - name: Sync release tag
         if: github.event_name == 'release'
@@ -42,9 +48,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add README.md LICENSE docs/
-          git commit -m "Release $TAG - sync from private repo" || echo "No changes to commit"
-          git tag "$TAG" -m "Release $TAG"
+          git add -A
+          git commit -m "Release $TAG" || echo "No changes to commit"
+          git tag "$TAG" -m "Release $TAG" -f
 
       - name: Sync on manual trigger
         if: github.event_name == 'workflow_dispatch'
@@ -53,8 +59,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add README.md LICENSE docs/
-          git commit -m "Sync docs from private repo" || echo "No changes to commit"
+          git add -A
+          git commit -m "Sync from source" || echo "No changes to commit"
 
       - name: Push to public repo
         run: |

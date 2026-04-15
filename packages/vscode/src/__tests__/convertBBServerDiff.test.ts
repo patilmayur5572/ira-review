@@ -1,40 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import './setup';
-
-// Reproduce the function and types for testing
-interface BitbucketServerDiffResponse {
-  diffs: Array<{
-    source?: { toString: string };
-    destination?: { toString: string };
-    hunks?: Array<{
-      segments: Array<{
-        type: 'ADDED' | 'REMOVED' | 'CONTEXT';
-        lines: Array<{ line: string; source?: number; destination?: number }>;
-      }>;
-    }>;
-  }>;
-}
-
-function convertBBServerDiffToUnified(json: BitbucketServerDiffResponse): string {
-  const parts: string[] = [];
-  for (const diff of json.diffs ?? []) {
-    const src = diff.source?.toString ?? '/dev/null';
-    const dst = diff.destination?.toString ?? '/dev/null';
-    parts.push(`diff --git a/${src} b/${dst}`);
-    parts.push(`--- a/${src}`);
-    parts.push(`+++ b/${dst}`);
-    for (const hunk of diff.hunks ?? []) {
-      parts.push('@@ -1,0 +1,0 @@');
-      for (const seg of hunk.segments) {
-        const prefix = seg.type === 'ADDED' ? '+' : seg.type === 'REMOVED' ? '-' : ' ';
-        for (const line of seg.lines) {
-          parts.push(`${prefix}${line.line}`);
-        }
-      }
-    }
-  }
-  return parts.join('\n');
-}
+import { convertBBServerDiffToUnified } from '../utils/diff';
+import type { BitbucketServerDiffResponse } from '../utils/diff';
 
 describe('convertBBServerDiffToUnified', () => {
   it('converts JSON diff with added lines', () => {

@@ -214,7 +214,7 @@ IRA is not a SaaS product. There is no hosted service, no telemetry, no analytic
 | **Auth** | Environment variables or CLI flags | VS Code OAuth + OS keychain |
 | **Output** | Terminal + PR comments | Inline diagnostics, CodeLens, TreeView, risk badge |
 | **JIRA/Sonar** | CLI flags or env vars | VS Code settings |
-| **Pro features** | Not applicable | Auto-review on save, one-click fix, history/trends |
+| **Extension features** | Not applicable | Auto-review on save, one-click fix, history/trends |
 
 Both surfaces use the same core review engine. The review logic, risk scoring, and AI prompts are identical.
 
@@ -425,7 +425,7 @@ CLI flags override environment variables, which override the config file. Token 
 
 ## License
 
-[Proprietary](LICENSE). See LICENSE file for details.
+[MIT](LICENSE)
 
 Full CLI reference: `npx ira-review review --help`
 

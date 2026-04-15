@@ -10,7 +10,7 @@ import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { resolveJiraCredentials, resolveAiApiKey } from '../utils/credentialPrompts';
 import { suppressAutoReviewPopup } from '../services/autoReviewer';
 import * as msg from '../utils/messages';
-import * as cp from 'child_process';
+import { execGit } from '../utils/git';
 
 const TEST_FRAMEWORKS: TestFramework[] = ['jest', 'vitest', 'mocha', 'playwright', 'cypress', 'gherkin', 'pytest', 'junit'];
 
@@ -44,7 +44,8 @@ export async function generateTests(): Promise<void> {
     async () => {
       suppressAutoReviewPopup(true);
       try {
-        const jira = new JiraClient({ baseUrl: jiraCreds.url, email: jiraCreds.email, token: jiraCreds.token, type: jiraCreds.type });
+        const acField = vscode.workspace.getConfiguration('ira').get<string>('jiraAcField', '') || undefined;
+        const jira = new JiraClient({ baseUrl: jiraCreds.url, email: jiraCreds.email, token: jiraCreds.token, type: jiraCreds.type, acceptanceCriteriaField: acField });
         const issue = await jira.fetchIssue(normalizedKey);
 
         const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
@@ -114,13 +115,4 @@ export async function generateTests(): Promise<void> {
       }
     },
   );
-}
-
-function execGit(command: string, cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cp.exec(command, { cwd }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout.trim());
-    });
-  });
 }
