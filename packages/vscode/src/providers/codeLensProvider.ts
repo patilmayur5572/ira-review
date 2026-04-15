@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import type { ReviewComment } from 'ira-review';
+import { getPRContext } from '../extension';
 
 export class IraCodeLensProvider implements vscode.CodeLensProvider {
   private _comments: ReviewComment[] = [];
@@ -65,6 +66,14 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
         command: 'ira.dismissIssue',
         arguments: [comment],
       }));
+
+      if (getPRContext()) {
+        lenses.push(new vscode.CodeLens(range, {
+          title: '📌 Post to PR',
+          command: 'ira.postIssueToPR',
+          arguments: [comment],
+        }));
+      }
     }
 
     return lenses;

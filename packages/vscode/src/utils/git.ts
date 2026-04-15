@@ -71,6 +71,53 @@ export async function detectRepo(cwd: string): Promise<RepoInfo> {
 }
 
 /**
+ * Fetch the source branch name of a PR from the SCM API.
+ * Returns the branch name string, or empty string on failure.
+ */
+export async function fetchPRSourceBranch(
+  scmProvider: 'github' | 'bitbucket',
+  repoInfo: RepoInfo,
+  prNumber: string,
+  scmToken: string,
+  options?: { bitbucketUrl?: string; gheUrl?: string },
+): Promise<string> {
+  try {
+    const bbUrl = options?.bitbucketUrl;
+    if (scmProvider === 'bitbucket' && bbUrl) {
+      // Bitbucket Server
+      const url = `${bbUrl.replace(/\/+$/, '')}/rest/api/1.0/projects/${repoInfo.owner}/repos/${repoInfo.repo}/pull-requests/${prNumber}`;
+      const resp = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'application/json' },
+      });
+      if (!resp.ok) return '';
+      const data = await resp.json() as any;
+      return data?.fromRef?.displayId ?? '';
+    } else if (scmProvider === 'bitbucket') {
+      // Bitbucket Cloud
+      const url = `https://api.bitbucket.org/2.0/repositories/${repoInfo.owner}/${repoInfo.repo}/pullrequests/${prNumber}`;
+      const resp = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'application/json' },
+      });
+      if (!resp.ok) return '';
+      const data = await resp.json() as any;
+      return data?.source?.branch?.name ?? '';
+    } else {
+      // GitHub / GitHub Enterprise
+      const apiBase = options?.gheUrl || 'https://api.github.com';
+      const url = `${apiBase}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls/${prNumber}`;
+      const resp = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'application/json' },
+      });
+      if (!resp.ok) return '';
+      const data = await resp.json() as any;
+      return data?.head?.ref ?? '';
+    }
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Detect the default branch (silent — no user prompt).
  * Tries: origin/HEAD symbolic ref → develop → main → master → falls back to 'main'.
  */
