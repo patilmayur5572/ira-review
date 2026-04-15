@@ -110,6 +110,22 @@ export async function acValidationSuccess(jiraKey: string, passCount: number, fa
   return `${jiraKey}: ${passCount} AC passed, ${failCount} need attention 📋`;
 }
 
+export function acAlreadyExists(jiraKey: string): string {
+  return `${jiraKey} already has acceptance criteria — no need to generate new ones`;
+}
+
+export function acAlreadyPosted(jiraKey: string): string {
+  return `IRA already posted AC suggestions on ${jiraKey} — check the comments`;
+}
+
+export function acSuggestSuccess(count: number, jiraKey: string): string {
+  return `Posted ${count} acceptance criteria to ${jiraKey} as a JIRA comment ✅`;
+}
+
+export function acInsufficientChanges(): string {
+  return 'Not enough code changes to generate meaningful acceptance criteria — keep coding!';
+}
+
 // ─── Warnings ───────────────────────────────────────────────
 
 export function fileEmpty(): string {
@@ -187,6 +203,7 @@ export const progress = {
   calculateRisk: 'Calculating risk score…',
   validateAC: (key: string) => `Checking ${key} acceptance criteria…`,
   generatePRDesc: 'Crafting PR description…',
+  suggestAC: (key: string) => `Generating acceptance criteria for ${key}…`,
   autoReview: '$(sync~spin) Auto-reviewing…',
   generatingFix: '$(sync~spin) Generating fix…',
   pullingModel: (model: string) => `Pulling ${model}… this may take a few minutes`,

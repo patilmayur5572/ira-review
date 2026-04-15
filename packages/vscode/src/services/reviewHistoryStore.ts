@@ -107,7 +107,7 @@ export class ReviewHistoryStore {
   getTrends(): TrendData {
     const entries = this.getAll();
     if (entries.length === 0) {
-      return { issuesOverTime: [], riskOverTime: [], topRules: [], severityBreakdown: {} };
+      return { issuesOverTime: [], riskOverTime: [], topRules: [], severityBreakdown: {}, direction: 'insufficient', hotspotFiles: [] };
     }
 
     const issuesOverTime = entries.map((e) => ({
@@ -127,10 +127,17 @@ export class ReviewHistoryStore {
 
     const ruleCounts = new Map<string, number>();
     const severityBreakdown: Record<string, number> = {};
+    // Track issues per file + top rule per file for hotspots
+    const fileIssueCounts = new Map<string, number>();
+    const fileRuleCounts = new Map<string, Map<string, number>>();
     for (const entry of entries) {
       for (const c of entry.comments) {
         ruleCounts.set(c.rule, (ruleCounts.get(c.rule) ?? 0) + 1);
         severityBreakdown[c.severity] = (severityBreakdown[c.severity] ?? 0) + 1;
+        fileIssueCounts.set(c.filePath, (fileIssueCounts.get(c.filePath) ?? 0) + 1);
+        if (!fileRuleCounts.has(c.filePath)) fileRuleCounts.set(c.filePath, new Map());
+        const frm = fileRuleCounts.get(c.filePath)!;
+        frm.set(c.rule, (frm.get(c.rule) ?? 0) + 1);
       }
     }
 
@@ -139,7 +146,31 @@ export class ReviewHistoryStore {
       .slice(0, 10)
       .map(([rule, count]) => ({ rule, count }));
 
-    return { issuesOverTime, riskOverTime, topRules, severityBreakdown };
+    // Direction: compare avg issues of last 5 reviews vs previous 5
+    // entries are newest-first from getAll()
+    let direction: TrendData['direction'] = 'insufficient';
+    if (entries.length >= 6) {
+      const recent5 = entries.slice(0, 5);
+      const previous5 = entries.slice(5, 10);
+      const recentAvg = recent5.reduce((s, e) => s + e.totalIssues, 0) / recent5.length;
+      const previousAvg = previous5.reduce((s, e) => s + e.totalIssues, 0) / previous5.length;
+      const diff = recentAvg - previousAvg;
+      if (diff < -0.5) direction = 'improving';
+      else if (diff > 0.5) direction = 'worsening';
+      else direction = 'stable';
+    }
+
+    // Top 3 hotspot files
+    const hotspotFiles = [...fileIssueCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([filePath, issueCount]) => {
+        const frm = fileRuleCounts.get(filePath)!;
+        const topRule = [...frm.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+        return { filePath, issueCount, topRule };
+      });
+
+    return { issuesOverTime, riskOverTime, topRules, severityBreakdown, direction, hotspotFiles };
   }
 
   dispose(): void {
@@ -152,4 +183,8 @@ export interface TrendData {
   riskOverTime: Array<{ date: string; score: number; level: string; pr: string }>;
   topRules: Array<{ rule: string; count: number }>;
   severityBreakdown: Record<string, number>;
+  /** Direction: compare avg issues of last 5 reviews vs previous 5. */
+  direction: 'improving' | 'stable' | 'worsening' | 'insufficient';
+  /** Files with the most issues across recent reviews. */
+  hotspotFiles: Array<{ filePath: string; issueCount: number; topRule: string }>;
 }

@@ -88,12 +88,14 @@ describe("ReviewEngine", () => {
     let callCount = 0;
     globalThis.fetch = vi.fn().mockImplementation(() => {
       callCount++;
-      // Call 1: Sonar issues. Call 2: complexity analyzer. Call 3+: diff/file content
+      // Call 1: PR state. Call 2: Sonar issues. Call 3: complexity analyzer. Call 4+: diff/file content
       return Promise.resolve({
         ok: true,
         text: () => Promise.resolve("diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new"),
         json: () => Promise.resolve(
           callCount === 1
+            ? { state: "OPEN" }
+            : callCount === 2
             ? sonarResponse
             : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } },
         ),
@@ -213,11 +215,14 @@ describe("ReviewEngine", () => {
     let callCount = 0;
     globalThis.fetch = vi.fn().mockImplementation(() => {
       callCount++;
+      // Call 1: PR state. Call 2: Sonar issues. Call 3+: complexity/diff/file
       return Promise.resolve({
         ok: true,
         text: () => Promise.resolve(""),
         json: () => Promise.resolve(
           callCount === 1
+            ? { state: "OPEN" }
+            : callCount === 2
             ? emptyResponse
             : { components: [], paging: { total: 0, pageIndex: 1, pageSize: 500 } },
         ),

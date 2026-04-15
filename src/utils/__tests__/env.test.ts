@@ -18,6 +18,7 @@ describe("resolveConfigFromEnv", () => {
     process.env.IRA_SONAR_TOKEN = "sonar-tok";
     process.env.IRA_PROJECT_KEY = "my-project";
     process.env.IRA_PR = "42";
+    process.env.IRA_SCM_PROVIDER = "bitbucket";
     process.env.IRA_BITBUCKET_TOKEN = "bb-tok";
     process.env.IRA_REPO = "workspace/repo";
     process.env.OPENAI_API_KEY = "sk-test";
@@ -67,6 +68,7 @@ describe("resolveConfigFromEnv", () => {
     process.env.IRA_SONAR_TOKEN = "tok";
     process.env.IRA_PROJECT_KEY = "proj";
     process.env.IRA_PR = "1";
+    process.env.IRA_SCM_PROVIDER = "bitbucket";
     process.env.OPENAI_API_KEY = "sk-test";
 
     expect(() => resolveConfigFromEnv()).toThrow(

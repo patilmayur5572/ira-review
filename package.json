@@ -1,6 +1,6 @@
 {
   "name": "ira-review",
-  "version": "1.2.1",
+  "version": "2.0.0",
   "description": "AI-powered PR reviews with built-in JIRA intelligence",
   "type": "module",
   "exports": {
@@ -47,7 +47,7 @@
     "openai"
   ],
   "author": "Mayur Patil (https://github.com/patilmayur5572)",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/patilmayur5572/ira-review.git"

@@ -1,6 +1,22 @@
 import type { IraConfig, SCMProviderType, AIProviderType } from "../types/config.js";
+import { execSync } from "node:child_process";
 
 const VALID_SCM_PROVIDERS: SCMProviderType[] = ["bitbucket", "github"];
+
+function detectScm(): string {
+  try {
+    const remote = execSync("git config --get remote.origin.url", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    if (/github\.com/i.test(remote)) return "github";
+    if (/bitbucket\.org/i.test(remote)) return "bitbucket";
+  } catch { /* not in a git repo */ }
+  throw new Error(
+    "Could not detect SCM provider from git remote.\n" +
+    "  💡 Set --scm-provider (github or bitbucket), IRA_SCM_PROVIDER env var, or add scmProvider to .irarc.json",
+  );
+}
 const VALID_AI_PROVIDERS: AIProviderType[] = ["openai", "azure-openai", "anthropic", "ollama"];
 const VALID_SEVERITIES = ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"] as const;
 
@@ -25,8 +41,8 @@ export function resolveConfigFromEnv(
   // Sonar config is now optional
   const sonarConfig = resolveSonarConfig(overrides);
 
-  // SCM provider: "bitbucket" (default) or "github"
-  const scmProvider = (overrides.scmProvider ?? optionalEnv("IRA_SCM_PROVIDER") ?? "bitbucket") as string;
+  // SCM provider: auto-detect from git remote, or require explicit config
+  const scmProvider = (overrides.scmProvider ?? optionalEnv("IRA_SCM_PROVIDER") ?? detectScm()) as string;
   if (!VALID_SCM_PROVIDERS.includes(scmProvider as SCMProviderType)) {
     throw new Error(`Invalid SCM provider: "${scmProvider}". Must be one of: ${VALID_SCM_PROVIDERS.join(", ")}`);
   }
@@ -49,6 +65,7 @@ export function resolveConfigFromEnv(
     throw new Error(`Invalid min-severity: "${minSeverity}". Must be one of: ${VALID_SEVERITIES.join(", ")}`);
   }
 
+  const jiraAcSource = overrides.jiraAcSource ?? optionalEnv("IRA_JIRA_AC_SOURCE");
   const jiraTicket = overrides.jiraTicket ?? optionalEnv("IRA_JIRA_TICKET");
   if (jiraTicket && !jiraConfig) {
     console.warn(
@@ -77,6 +94,7 @@ export function resolveConfigFromEnv(
     ...(notificationsConfig && { notifications: notificationsConfig }),
     ...(overrides.generateTests && { generateTests: overrides.generateTests }),
     ...(overrides.testFramework && { testFramework: overrides.testFramework as IraConfig["testFramework"] }),
+    ...(jiraAcSource && { jiraAcSource: jiraAcSource as IraConfig["jiraAcSource"] }),
   };
 }
 
@@ -233,6 +251,7 @@ export interface FlatConfig {
   notifyOnAcFail?: boolean;
   generateTests?: boolean;
   testFramework?: string;
+  jiraAcSource?: string;
 }
 
 function env(key: string): string {
