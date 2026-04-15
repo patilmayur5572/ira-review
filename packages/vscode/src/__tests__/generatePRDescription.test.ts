@@ -4,20 +4,21 @@ import * as vscode from 'vscode';
 import { generatePRDescription } from '../commands/generatePRDescription';
 import { AuthProvider } from '../services/authProvider';
 
-// Mock child_process
+// Mock child_process — execGit uses cp.execFile(cmd, args, opts, cb)
 vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: any, cb: Function) => {
-    if (cmd.includes('rev-parse --show-toplevel')) {
+  execFile: vi.fn((cmd: string, args: string[], opts: any, cb: Function) => {
+    const fullCmd = [cmd, ...args].join(' ');
+    if (fullCmd.includes('rev-parse --show-toplevel')) {
       cb(null, '/test/workspace');
-    } else if (cmd.includes('branch --show-current')) {
+    } else if (fullCmd.includes('branch --show-current')) {
       cb(null, 'feature/PROJ-123-add-feature');
-    } else if (cmd.includes('remote get-url')) {
+    } else if (fullCmd.includes('remote get-url')) {
       cb(null, 'https://github.com/owner/repo.git');
-    } else if (cmd.includes('symbolic-ref')) {
+    } else if (fullCmd.includes('symbolic-ref')) {
       cb(null, 'refs/remotes/origin/main');
-    } else if (cmd.includes('git diff')) {
+    } else if (fullCmd.includes('diff')) {
       cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
-    } else if (cmd.includes('rev-parse --verify')) {
+    } else if (fullCmd.includes('rev-parse --verify')) {
       cb(null, 'main');
     } else {
       cb(null, '');
@@ -118,7 +119,7 @@ describe('generatePRDescription', () => {
     });
 
     await generatePRDescription();
-    expect(vscode.window.withProgress).toHaveBeenCalled();
+    // PR number prompt is shown before progress toast
     expect(vscode.window.showInputBox).toHaveBeenCalled();
   });
 
@@ -135,9 +136,95 @@ describe('generatePRDescription', () => {
     });
 
     await generatePRDescription();
-    expect(vscode.window.withProgress).toHaveBeenCalled();
+    // PR number prompt happens before progress — cancelling silently returns
+    expect(vscode.window.showInputBox).toHaveBeenCalled();
+    expect(vscode.window.withProgress).not.toHaveBeenCalled();
+  });
+
+  it('should show error when AI provider fails', async () => {
+    const { CopilotAIProvider } = await import('../providers/copilotAIProvider');
+    (CopilotAIProvider as any).mockImplementation(function (this: any) {
+      this.rawReview = vi.fn().mockRejectedValue(new Error('Model overloaded'));
+    });
+
+    (vscode.window.showQuickPick as any).mockResolvedValue({ label: 'No PR yet', value: 'local' });
+    (vscode.workspace.getConfiguration as any).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'aiProvider') return 'copilot';
+        return '';
+      }),
+    });
+
+    await generatePRDescription();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('PR number is required'),
+      expect.stringContaining('Model overloaded'),
     );
+  });
+
+  it('should handle empty diff gracefully', async () => {
+    const cp = await import('child_process');
+    (cp.execFile as any).mockImplementation((cmd: string, args: string[], opts: any, cb: Function) => {
+      const fullCmd = [cmd, ...args].join(' ');
+      if (fullCmd.includes('rev-parse --show-toplevel')) {
+        cb(null, '/test/workspace');
+      } else if (fullCmd.includes('symbolic-ref')) {
+        cb(null, 'refs/remotes/origin/main');
+      } else if (fullCmd.includes('diff')) {
+        cb(null, '');
+      } else if (fullCmd.includes('rev-parse --verify')) {
+        cb(null, 'main');
+      } else {
+        cb(null, '');
+      }
+    });
+
+    (vscode.window.showQuickPick as any).mockResolvedValue({ label: 'No PR yet', value: 'local' });
+    (vscode.workspace.getConfiguration as any).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'aiProvider') return 'copilot';
+        return '';
+      }),
+    });
+
+    await generatePRDescription();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('No diff found'),
+    );
+  });
+
+  it('should truncate large diffs', async () => {
+    const { CopilotAIProvider } = await import('../providers/copilotAIProvider');
+    (CopilotAIProvider as any).mockImplementation(function (this: any) {
+      this.rawReview = vi.fn().mockResolvedValue('# PR Description\n\nGenerated content');
+    });
+
+    const cp = await import('child_process');
+    (cp.execFile as any).mockImplementation((cmd: string, args: string[], opts: any, cb: Function) => {
+      const fullCmd = [cmd, ...args].join(' ');
+      if (fullCmd.includes('rev-parse --show-toplevel')) {
+        cb(null, '/test/workspace');
+      } else if (fullCmd.includes('branch --show-current')) {
+        cb(null, 'feature/test');
+      } else if (fullCmd.includes('symbolic-ref')) {
+        cb(null, 'refs/remotes/origin/main');
+      } else if (fullCmd.includes('diff')) {
+        cb(null, 'x'.repeat(200000));
+      } else if (fullCmd.includes('rev-parse --verify')) {
+        cb(null, 'main');
+      } else {
+        cb(null, '');
+      }
+    });
+
+    (vscode.window.showQuickPick as any).mockResolvedValue({ label: 'No PR yet', value: 'local' });
+    (vscode.workspace.getConfiguration as any).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'aiProvider') return 'copilot';
+        return '';
+      }),
+    });
+
+    await generatePRDescription();
+    expect(vscode.window.showTextDocument).toHaveBeenCalled();
   });
 });

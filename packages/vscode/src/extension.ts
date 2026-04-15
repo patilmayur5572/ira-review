@@ -8,12 +8,13 @@ import { reviewPR } from './commands/reviewPR';
 import { generatePRDescription } from './commands/generatePRDescription';
 import { generateTests } from './commands/generateTests';
 import { reviewFile } from './commands/reviewFile';
-import { showRisk } from './commands/showRisk';
+
 import { validateJiraAC } from './commands/validateJiraAC';
+import { suggestAC } from './commands/suggestAC';
 import { createStatusBar, updateStatusBar } from './providers/statusBarProvider';
+import { removeDiagnostic } from './providers/diagnosticsProvider';
 import { IraIssuesProvider } from './providers/treeViewProvider';
 import { IraCodeLensProvider } from './providers/codeLensProvider';
-import { LicenseManager } from './services/licenseManager';
 import { AuthProvider } from './services/authProvider';
 import { ReviewHistoryStore } from './services/reviewHistoryStore';
 import { activateAutoReview } from './services/autoReviewer';
@@ -36,13 +37,13 @@ export function setLastResult(result: ReviewResult | null): void {
 export function activate(context: vscode.ExtensionContext): void {
   console.log('IRA extension is now active');
 
-  // Initialize auth, license, and history
+  // Initialize auth and history
   const auth = AuthProvider.init(context);
-  const license = LicenseManager.init(context);
   const historyStore = ReviewHistoryStore.init(context);
 
   const diagnosticCollection = vscode.languages.createDiagnosticCollection('ira');
   const statusBar = createStatusBar();
+
   const treeProvider = new IraIssuesProvider();
   const codeLensProvider = new IraCodeLensProvider();
   const historyProvider = new IraHistoryProvider();
@@ -67,19 +68,10 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   }
 
-  // Activate auto-review on save (Pro feature)
+  // Activate auto-review on save
   activateAutoReview(context, diagnosticCollection);
 
   context.subscriptions.push(
-    // Update UI when license changes
-    license.onDidChangeLicense((isPro) => {
-      if (isPro) {
-        statusBar.text = '$(shield) IRA Pro';
-      }
-      historyProvider.refresh();
-      dashboardProvider.refresh();
-    }),
-
     // Refresh dashboard when history changes
     historyStore.onDidChange(() => {
       historyProvider.refresh();
@@ -88,7 +80,6 @@ export function activate(context: vscode.ExtensionContext): void {
     diagnosticCollection,
     statusBar,
     auth,
-    license,
     historyStore,
     vscode.commands.registerCommand('ira.reviewPR', () =>
       reviewPR(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider)
@@ -99,15 +90,10 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('ira.generateTests', () => generateTests()),
     vscode.commands.registerCommand('ira.validateJiraAC', () => validateJiraAC()),
-    vscode.commands.registerCommand('ira.showRisk', () => showRisk()),
+    vscode.commands.registerCommand('ira.suggestAC', () => suggestAC()),
+
     vscode.commands.registerCommand('ira.configure', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', 'ira')
-    ),
-    vscode.commands.registerCommand('ira.activateLicense', () =>
-      license.activateLicense()
-    ),
-    vscode.commands.registerCommand('ira.deactivateLicense', () =>
-      license.deactivateLicense()
     ),
     vscode.commands.registerCommand('ira.signIn', async () => {
       const choice = await vscode.window.showQuickPick(
@@ -122,15 +108,23 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('ira.signOut', () => auth.signOut()),
     vscode.commands.registerCommand('ira.showIssueDetail', async (detail: string) => {
-      const doc = await vscode.workspace.openTextDocument({
-        content: detail,
-        language: 'markdown',
-      });
-      await vscode.window.showTextDocument(doc, {
-        viewColumn: vscode.ViewColumn.Beside,
-        preserveFocus: true,
-        preview: true,
-      });
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      const tmpDir = path.join(os.tmpdir(), 'ira-review');
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = path.join(tmpDir, 'issue-detail.md');
+      fs.writeFileSync(tmpFile, detail, 'utf-8');
+      const uri = vscode.Uri.file(tmpFile);
+      // Close any existing IRA preview tab before opening a new one
+      for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+          if (tab.label.includes('issue-detail')) {
+            await vscode.window.tabGroups.close(tab);
+          }
+        }
+      }
+      await vscode.commands.executeCommand('markdown.showPreview', uri, { viewColumn: vscode.ViewColumn.Beside });
     }),
     vscode.commands.registerCommand('ira.initRules', async () => {
       const cp = await import('child_process');
@@ -211,7 +205,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ira.setupOllama', () => setupOllama()),
     vscode.commands.registerCommand('ira.applyFix', async (comment) => {
       const { applyFix } = await import('./services/fixApplicator');
-      await applyFix(comment);
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      await applyFix(comment, () => {
+        codeLensProvider.removeComment(comment);
+        treeProvider.removeComment(comment);
+        removeDiagnostic(comment, diagnosticCollection, workspaceRoot);
+      });
+    }),
+    vscode.commands.registerCommand('ira.dismissIssue', (comment) => {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      codeLensProvider.removeComment(comment);
+      treeProvider.removeComment(comment);
+      removeDiagnostic(comment, diagnosticCollection, workspaceRoot);
     }),
     vscode.languages.registerCodeLensProvider({ scheme: 'file' }, codeLensProvider),
   );

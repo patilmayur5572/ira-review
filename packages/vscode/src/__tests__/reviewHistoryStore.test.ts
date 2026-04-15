@@ -126,6 +126,99 @@ describe('ReviewHistoryStore', () => {
     expect(savedEntries).toHaveLength(200);
   });
 
+  it('getTrends() returns direction=insufficient with fewer than 6 entries', () => {
+    const entries = Array.from({ length: 3 }, (_, i) => ({
+      id: `${i}`, pullRequestId: `PR-${i}`, timestamp: Date.now() - i * 86400000,
+      totalIssues: 5, riskScore: null, riskLevel: null,
+      comments: [{ severity: 'MAJOR', rule: 'IRA/security', message: 'm', filePath: 'a.ts' }],
+    }));
+    mockGlobalState.get.mockReturnValue(entries);
+    const store = ReviewHistoryStore.init(mockContext);
+
+    const trends = store.getTrends();
+    expect(trends.direction).toBe('insufficient');
+  });
+
+  it('getTrends() returns direction=improving when recent issues decrease', () => {
+    // entries are newest-first: recent 5 have 2 issues, previous 5 have 10 issues
+    const entries = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `r${i}`, pullRequestId: `PR-R${i}`, timestamp: Date.now() - i * 86400000,
+        totalIssues: 2, riskScore: null, riskLevel: null, comments: [],
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `p${i}`, pullRequestId: `PR-P${i}`, timestamp: Date.now() - (5 + i) * 86400000,
+        totalIssues: 10, riskScore: null, riskLevel: null, comments: [],
+      })),
+    ];
+    mockGlobalState.get.mockReturnValue(entries);
+    const store = ReviewHistoryStore.init(mockContext);
+
+    expect(store.getTrends().direction).toBe('improving');
+  });
+
+  it('getTrends() returns direction=worsening when recent issues increase', () => {
+    const entries = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `r${i}`, pullRequestId: `PR-R${i}`, timestamp: Date.now() - i * 86400000,
+        totalIssues: 10, riskScore: null, riskLevel: null, comments: [],
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `p${i}`, pullRequestId: `PR-P${i}`, timestamp: Date.now() - (5 + i) * 86400000,
+        totalIssues: 2, riskScore: null, riskLevel: null, comments: [],
+      })),
+    ];
+    mockGlobalState.get.mockReturnValue(entries);
+    const store = ReviewHistoryStore.init(mockContext);
+
+    expect(store.getTrends().direction).toBe('worsening');
+  });
+
+  it('getTrends() returns direction=stable when issue counts are similar', () => {
+    const entries = Array.from({ length: 10 }, (_, i) => ({
+      id: `${i}`, pullRequestId: `PR-${i}`, timestamp: Date.now() - i * 86400000,
+      totalIssues: 5, riskScore: null, riskLevel: null, comments: [],
+    }));
+    mockGlobalState.get.mockReturnValue(entries);
+    const store = ReviewHistoryStore.init(mockContext);
+
+    expect(store.getTrends().direction).toBe('stable');
+  });
+
+  it('getTrends() computes hotspot files sorted by issue count', () => {
+    const entries = [
+      { id: '1', pullRequestId: 'PR-1', timestamp: Date.now(), totalIssues: 4, riskScore: null, riskLevel: null, comments: [
+        { severity: 'CRITICAL', rule: 'IRA/security', message: 'm1', filePath: 'src/auth.ts' },
+        { severity: 'MAJOR', rule: 'IRA/security', message: 'm2', filePath: 'src/auth.ts' },
+        { severity: 'MAJOR', rule: 'IRA/error-handling', message: 'm3', filePath: 'src/api.ts' },
+        { severity: 'MINOR', rule: 'IRA/defensive', message: 'm4', filePath: 'src/utils.ts' },
+      ]},
+    ];
+    mockGlobalState.get.mockReturnValue(entries);
+    const store = ReviewHistoryStore.init(mockContext);
+
+    const trends = store.getTrends();
+    expect(trends.hotspotFiles).toHaveLength(3);
+    expect(trends.hotspotFiles[0].filePath).toBe('src/auth.ts');
+    expect(trends.hotspotFiles[0].issueCount).toBe(2);
+    expect(trends.hotspotFiles[0].topRule).toBe('IRA/security');
+    expect(trends.hotspotFiles[1].filePath).toBe('src/api.ts');
+    expect(trends.hotspotFiles[2].filePath).toBe('src/utils.ts');
+  });
+
+  it('getTrends() limits hotspot files to top 3', () => {
+    const comments = ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'].flatMap((f) =>
+      Array.from({ length: 5 - ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'].indexOf(f) }, () => ({
+        severity: 'MAJOR', rule: 'IRA/security', message: 'm', filePath: f,
+      })),
+    );
+    const entries = [{ id: '1', pullRequestId: 'PR-1', timestamp: Date.now(), totalIssues: comments.length, riskScore: null, riskLevel: null, comments }];
+    mockGlobalState.get.mockReturnValue(entries);
+    const store = ReviewHistoryStore.init(mockContext);
+
+    expect(store.getTrends().hotspotFiles).toHaveLength(3);
+  });
+
   it('clear() removes all entries', async () => {
     mockGlobalState.get.mockReturnValue([{ id: '1' }]);
     const store = ReviewHistoryStore.init(mockContext);

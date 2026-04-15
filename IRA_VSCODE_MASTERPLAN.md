@@ -345,44 +345,101 @@ User: Cmd+Shift+P → "IRA: Activate License" → pastes key → Pro unlocked
 
 ## 4. Feature Tiers
 
-### Free (forever) — CLI parity, no bait-and-switch
+### 4.1 Monetization Strategy — CLI as gateway, Extension as revenue
 
-| Feature | Description |
-|---------|-------------|
-| Full PR review | AI reviews all changed files in a PR |
-| SonarQube integration | Enrich reviews with Sonar issues |
-| JIRA AC validation | Validate acceptance criteria |
-| Risk scoring | Basic risk score (LOW/MEDIUM/HIGH/CRITICAL) |
-| Test case generation | Generate tests from JIRA tickets |
-| Requirement tracking | Track AC completion |
-| Diagnostics | Red squiggly lines on flagged code |
-| CodeLens | Inline issue annotations |
-| Status bar | Risk score badge |
-| Sidebar tree view | Browsable list of all issues |
-| GitHub built-in auth | No token needed |
-| BYOK (AI) | User provides own OpenAI/Azure/Ollama key |
-| Multi-LLM support | OpenAI, Azure, Anthropic, Ollama |
+The CLI is the **top-of-funnel**. Every `npx ira-review` run is a developer who now knows IRA exists. The CLI is the marketing budget — it should never feel crippled, but AI-expensive features are **rate-limited** to create a natural upgrade path.
 
-**Principle:** Free tier = everything the CLI does. Never gate existing CLI features behind a paywall.
+The extension **Pro tier** is the primary revenue engine. Target: **$500-2,000/mo** ($6K-24K/yr).
 
-### Pro ($10/mo or $100/yr) — Things only the extension can do
+**Core principles:**
+1. **Never remove a free feature.** Rate-limit expensive ones instead.
+2. **CLI stays useful forever.** Developers who only use CI never need to pay.
+3. **The extension upgrade is about experience** (automation, persistence, visual UI), not about unlocking features that the CLI already had.
+4. **Existing users on old versions keep what they have.** Old npm versions continue to work. New versions (v1.3+) include usage tracking. Deprecate pre-1.3 on npm registry.
 
-| Feature | Description | Why it's worth paying for |
-|---------|-------------|--------------------------|
-| Auto-review on save | Reviews run automatically when you save a file | Catches bugs in real-time, not after push |
-| One-click "Apply Fix" | Click → see diff → apply AI-suggested fix | Saves minutes per issue |
-| Review history | All past reviews stored locally, searchable | Track your improvement over time |
-| Trends dashboard | Charts: issues over time, risk trends, recurring patterns | Visual quality insights |
-| Smart notifications | Slack/Teams alerts for high-risk PRs | Team awareness without leaving chat |
-| Custom rules | Define rules per folder/file pattern | Tailored reviews for your codebase |
-| Managed AI (bonus) | AI calls proxied through IRA, no key needed | Convenience bonus, not the selling point |
-| Post to PR | One-click "Post to Bitbucket/GitHub" — sends review as inline comments on the PR | Tech lead reviews locally, then shares with team in one click |
-| Selective posting | Choose which issues to post — don't spam the PR with minor issues | Control over what the team sees |
-| Priority support | Fast response on issues/feature requests | Peace of mind |
+### 4.2 Feature matrix — CLI vs Extension Free vs Extension Pro vs Team
 
-**Principle:** Pro features are things that are impossible in a CLI — automation, persistence, and editor integration. People pay for experience, not features.
+| Feature | CLI (free) | Extension Free | Extension Pro ($10/mo) | Team ($25/user/mo) |
+|---------|:----------:|:--------------:|:----------------------:|:------------------:|
+| **Core Review** | | | | |
+| Full PR review (Sonar + AI / standalone) | ✅ Unlimited | ✅ Unlimited | ✅ Unlimited | ✅ Unlimited |
+| Risk scoring (0-100) | ✅ | ✅ | ✅ | ✅ |
+| .ira-rules.json (team rules) | ✅ | ✅ | ✅ | ✅ |
+| Sensitive areas detection | ✅ | ✅ | ✅ | ✅ |
+| Comment deduplication | ✅ | ✅ | ✅ | ✅ |
+| Inline diagnostics + CodeLens | — | ✅ | ✅ | ✅ |
+| Sidebar tree view | — | ✅ | ✅ | ✅ |
+| Status bar risk badge | — | ✅ | ✅ | ✅ |
+| GitHub built-in auth (zero config) | — | ✅ | ✅ | ✅ |
+| Copilot AI (zero config) | — | ✅ | ✅ | ✅ |
+| Multi-LLM (OpenAI, Azure, Anthropic, Ollama) | ✅ | ✅ | ✅ | ✅ |
+| Slack/Teams notifications | ✅ | ✅ | ✅ | ✅ |
+| **AI-Heavy Features (rate-limited)** | | | | |
+| JIRA AC validation | ✅ Unlimited | ✅ Unlimited | ✅ Unlimited | ✅ Unlimited |
+| Test case generation | **5/month** | **5/month** | ✅ Unlimited | ✅ Unlimited |
+| PR description generation | — | **3/month** | ✅ Unlimited | ✅ Unlimited |
+| AC suggestion (auto-post to JIRA) | **3/month** | **3/month** | ✅ Unlimited | ✅ Unlimited |
+| **Pro Features** | | | | |
+| Auto-review on save | — | — | ✅ | ✅ |
+| One-click apply fix | — | — | ✅ | ✅ |
+| Review history (searchable) | — | — | ✅ | ✅ |
+| Trends dashboard | — | — | ✅ | ✅ |
+| Priority support | — | — | ✅ | ✅ |
+| **Team Features** | | | | |
+| Multi-repo dashboard | — | — | — | 🔜 Coming soon |
+| Team analytics | — | — | — | 🔜 Coming soon |
+| Shared rules enforcement | — | — | — | 🔜 Coming soon |
+| Seat management | — | — | — | 🔜 Coming soon |
 
-### Team ($8/user/mo, min 5 seats) — Phase 4
+**Pricing logic:**
+- **Pro ($10/mo)** — individual developer. Pays for automation + unlimited AI features. Ships today.
+- **Team ($25/user/mo, min 5 seats)** — engineering manager. Pays for visibility across repos + team. Ships when features are ready.
+- Competitors: CodeRabbit $12/user, Qodo $19/user, Greptile $30/user. Team at $25 is competitive and justified by multi-repo + analytics.
+- Pro at $10 undercuts every competitor for individual use. Team at $25 is middle-of-pack for team use.
+
+### 4.3 Rate limiting implementation (offline, no server)
+
+Since IRA is local-first with no backend, rate limits are tracked in a local file:
+
+```
+~/.config/ira/usage.json
+{
+  "testGenCount": 3,
+  "testGenResetDate": "2026-05-01",
+  "acSuggestCount": 1,
+  "acSuggestResetDate": "2026-05-01",
+  "prDescCount": 2,
+  "prDescResetDate": "2026-05-01",
+  "licenseKey": null
+}
+```
+
+- Monthly reset based on calendar date (1st of each month)
+- No phone-home, no telemetry — consistent with privacy-first positioning
+- License key: a signed JWT generated at checkout (Polar.sh supports this)
+- Key payload: `{ plan: "pro", expiresAt: "2027-04-11" }` — validated offline with a public key embedded in the binary
+- When limit is hit: clear message with upgrade link, not a crash
+
+```
+⚠️  Test generation limit reached (5/5 this month)
+   Upgrade to Pro for unlimited: https://ira-review.dev/pricing
+   Resets on May 1, 2026
+```
+
+### 4.4 Handling existing users on older versions
+
+Old npm versions (pre-1.3) have no usage tracking and will continue to work forever. You cannot remotely disable them. Strategy:
+
+| Action | Effect |
+|--------|--------|
+| `npm deprecate ira-review@"<1.3.0" "Upgrade to 1.3+ for security patches and new features"` | npm shows deprecation warning on install |
+| Stop backporting bug fixes to pre-1.3 | Security patches only in 1.3+ |
+| New features (better prompts, new AI providers) only in 1.3+ | Natural incentive to upgrade |
+| v1.3+ includes usage tracking for rate-limited features | The monetization boundary |
+
+**Message to developers:** "We're not taking anything away. Old versions keep working. New versions are better and have a sustainable business model."
+
+### 4.5 Team tier ($8/user/mo, min 5 seats) — Phase 4
 
 | Feature | Description |
 |---------|-------------|
@@ -392,7 +449,7 @@ User: Cmd+Shift+P → "IRA: Activate License" → pastes key → Pro unlocked
 | Shared rules + config | Team-wide review rules, synced automatically |
 | Admin panel | Manage seats, billing, permissions |
 
-### Enterprise (custom pricing, $500-2,000/mo) — Phase 4
+### 4.6 Enterprise tier (custom pricing, $500-2,000/mo) — Phase 4
 
 | Feature | Description |
 |---------|-------------|
@@ -401,8 +458,112 @@ User: Cmd+Shift+P → "IRA: Activate License" → pastes key → Pro unlocked
 | Audit logs | Every review action logged for compliance |
 | Custom AI deployment | Azure OpenAI, Ollama, self-hosted LLMs |
 | On-prem support | Full air-gapped deployment |
-| Commercial license | AGPL exemption for proprietary use |
+| Commercial license | License exemption for proprietary use |
 | Dedicated support SLA | Guaranteed response times |
+
+### 4.7 License validation: Polar.sh → custom server migration path
+
+**Phase 1 (now → first $2K/mo): Polar.sh API — zero custom infra**
+
+Use Polar's built-in license key validation API with `usage` / `limit_usage` / `increment_usage` fields. Polar tracks rate limits server-side — tamper-proof, no local file to bypass.
+
+```
+POST https://api.polar.sh/v1/customer-portal/license-keys/validate
+{
+  "key": "IRA-XXXX-XXXX-XXXX",
+  "organization_id": "<your-polar-org-id>",
+  "increment_usage": 1
+}
+→ { "status": "granted", "usage": 4, "limit_usage": null, "expires_at": "..." }
+```
+
+- Free users (no key): local counter in `~/.config/ira/usage.json` (bypassable — but free users weren't paying anyway)
+- Pro users (have key): Polar validates + increments server-side — **cannot be bypassed**
+- Cache validation result for 1 hour (offline grace: 24 hours)
+- Polar uptime: 99.98% API, $10M seed (Accel-led), open source fallback
+- Cost: $0/month (Polar takes 4% + $0.40 per transaction from sales)
+
+**Phase 2 ($2K+/mo revenue): migrate to custom server**
+
+When revenue justifies it, replace Polar validation with your own API:
+- Vercel serverless function + Supabase/PlanetScale for usage tracking
+- Full control over usage logic (multiple counters, custom reset periods)
+- No vendor dependency for license validation
+- Cost: ~$20-50/month
+
+**Critical: abstract validation behind an interface from Day 1**
+
+```typescript
+// src/utils/licenseValidator.ts
+interface LicenseResult {
+  valid: boolean;
+  usage: number;
+  limitUsage: number | null;
+  expiresAt: string | null;
+}
+
+async function validateLicense(key: string, incrementUsage?: number): Promise<LicenseResult>
+```
+
+Day 1: calls `api.polar.sh`. Day 200: calls `api.ira-review.dev`. The CLI and extension never know the difference. Swapping is a one-file change.
+
+### 4.8 Rate limiting effort breakdown
+
+| Task | Where | Effort | Status |
+|------|-------|--------|--------|
+| **`licenseValidator.ts`** — Polar API integration, cache, offline grace | `src/utils/` (shared) | **1 day** | 🔴 Not built |
+| **`usageLimiter.ts`** — local counter for free users, delegates to validator for Pro | `src/utils/` (shared) | **4 hours** | 🔴 Not built |
+| **`ira-review activate <key>` CLI command** — store key in `~/.config/ira/` | `src/cli.ts` | **2 hours** | 🔴 Not built |
+| **Gate test generation in CLI** — check usage before `generateTestCases()` | `src/cli.ts` | **1 hour** | 🔴 Not built |
+| **Gate AC suggestion in CLI** — check usage before AC generation | `src/core/reviewEngine.ts` | **1 hour** | 🔴 Not built |
+| **Gate test generation in Extension** — check usage in `generateTests.ts` | `packages/vscode/` | **1 hour** | 🔴 Not built |
+| **Gate PR description in Extension** — check usage in `generatePRDescription.ts` | `packages/vscode/` | **1 hour** | 🔴 Not built |
+| **Auto-review on save** — Pro gate | `packages/vscode/` | — | ✅ Built & gated |
+| **One-click apply fix** — Pro gate | `packages/vscode/` | — | ✅ Built & gated |
+| **Review history + trends** — Pro gate | `packages/vscode/` | — | ✅ Built & gated |
+| **Trends dashboard** — Pro gate | `packages/vscode/` | — | ✅ Built & gated |
+| **Multi-repo dashboard** | `packages/vscode/` | **2-3 weeks** | 🔴 Not built |
+| **Team analytics** | needs backend | **3-4 weeks** | 🔴 Not built |
+| **Priority support** | process only | **0** | ✅ Just a label |
+| | | **Total for v1.3:** | **~2-3 days** |
+
+### 4.9 What Extension Pro actually has today vs what's missing
+
+**Already built and Pro-gated (shipping today):**
+
+| Feature | File | Value to developer |
+|---------|------|--------------------|
+| Auto-review on save | `autoReviewer.ts` | Catches bugs in real-time as you code |
+| One-click apply fix | `fixApplicator.ts` | Click → see diff → apply AI fix |
+| Review history | `historyTreeProvider.ts` | Track every past review, searchable |
+| Trends dashboard | `dashboardProvider.ts` | Charts: issues over time, risk trends |
+
+**Not built yet (future Pro):**
+
+| Feature | Effort | When |
+|---------|--------|------|
+| Multi-repo dashboard | 2-3 weeks | v1.4+ |
+| Team analytics | 3-4 weeks (needs backend) | Phase 4 |
+
+**Pricing reality check:** 4 Pro features (auto-review, apply fix, history, trends) at $10/mo is thin but viable if the positioning is right. The pitch isn't "4 features for $10" — it's:
+
+> *"IRA catches issues before your reviewer does. Pro makes that automatic — reviews run on every save, fixes apply in one click, and you can track your improvement over time."*
+
+At $10/mo, the decision is: "Is this worth less than 10 minutes of my time per month?" For any developer earning $50+/hr, the answer is yes if they use auto-review even once a day.
+
+**If $10/mo feels too high for 4 features, consider $6/mo or $60/yr.** Lower price = lower friction = more conversions. You'd need 83 subscribers at $10/mo for $10K/yr, or 139 at $6/mo. The conversion rate at $6 will likely be 2-3x higher than at $10, so net revenue could be similar.
+
+### 4.10 Future revenue expansion: GitHub App (when ready to scale beyond $2K/mo)
+
+If revenue exceeds $2K/mo and you want to scale further, the next step is a **GitHub App** that auto-runs on every PR:
+
+- Installs in 2 clicks from GitHub Marketplace
+- Auto-runs JIRA AC validation as a **PR check** (blocks merge if ACs aren't covered)
+- Free tier: 50 reviews/month per org
+- Team tier: $30/month per repo (unlimited reviews)
+- Enterprise: $500/month per org (unlimited repos)
+
+This shifts the buyer from individual developer to engineering manager (who has budget). Same review engine, different distribution. Keep this in your back pocket — don't build it until the extension Pro is generating steady revenue.
 
 ---
 
@@ -1003,10 +1164,15 @@ Architecture:
   ✅ Core library shared between CLI and extension
 
 Pricing:
-  ✅ Free tier = CLI parity (no bait-and-switch)
-  ✅ Pro = $10/mo or $100/yr (automation + insights)
+  ✅ CLI = free forever (gateway / marketing engine)
+  ✅ CLI rate-limits: test gen (5/mo), AC suggest (3/mo) — upgrade path to Pro
+  ✅ Extension Free = CLI parity + IDE UX (diagnostics, CodeLens, TreeView)
+  ✅ Pro = $10/mo or $100/yr (unlimited AI features + automation + history)
   ✅ Team = $8/user/mo (Phase 4 only)
   ✅ Enterprise = custom pricing (Phase 4+)
+  ✅ Rate limits: offline via ~/.config/ira/usage.json (no server needed)
+  ✅ License keys: signed JWT validated offline (Polar.sh generates them)
+  ✅ Old versions (pre-1.3): keep working, deprecated on npm, no new features
   ✅ Payment via Polar.sh (MoR — handles taxes, invoices, license keys)
 
 Editor support:
@@ -1026,10 +1192,12 @@ Tax (Australia):
   ✅ Pty Ltd when $50K+ (25% flat vs 30-45% personal)
   ✅ No GST until $75K AUD/yr
 
-Open source:
+Open source & CLI:
   ✅ Keep repo public (trust + discovery engine)
-  ✅ AGPL-3.0 license (protects commercial interests)
-  ✅ CLI stays free forever (marketing engine → extension is revenue engine)
+  ✅ Proprietary license (CLI free for personal + commercial use)
+  ✅ CLI = free gateway, rate-limited on AI-heavy features (v1.3+)
+  ✅ Extension Pro = revenue engine ($10/mo)
+  ✅ GitHub App = future scale engine (per-repo pricing, when ready)
 ```
 
 ---
@@ -1152,10 +1320,4 @@ vsce ls
 | npm package | https://www.npmjs.com/package/ira-review |
 | VS Code Marketplace | https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode |
 | Open VSX | https://open-vsx.org/extension/ira-review/ira-review-vscode |
-| Polar.sh (licensing) | https://polar.sh |
 | Support email | patilmayur5572@gmail.com |
-
----
-
-*Last updated: April 2026*
-*Author: Mayur Patil*

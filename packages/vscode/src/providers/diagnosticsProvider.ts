@@ -22,7 +22,7 @@ export function updateDiagnostics(
   }
 
   for (const [filePath, fileComments] of grouped) {
-    const uri = vscode.Uri.file(path.join(workspaceRoot, filePath));
+    const uri = resolveFileUri(filePath, workspaceRoot);
     const diagnostics: vscode.Diagnostic[] = fileComments.map((comment) => {
       const line = Math.max(0, comment.line - 1);
       const range = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
@@ -36,6 +36,53 @@ export function updateDiagnostics(
 
     diagnosticCollection.set(uri, diagnostics);
   }
+}
+
+export function removeDiagnostic(
+  comment: ReviewComment,
+  diagnosticCollection: vscode.DiagnosticCollection,
+  workspaceRoot: string,
+): void {
+  const uri = resolveFileUri(comment.filePath, workspaceRoot);
+  const existing = diagnosticCollection.get(uri);
+  if (!existing) return;
+
+  const commentLine = Math.max(0, comment.line - 1);
+  const filtered = existing.filter(
+    (d) => !(d.source === 'IRA' && d.range.start.line === commentLine && d.message.includes(comment.rule)),
+  );
+
+  if (filtered.length === 0) {
+    diagnosticCollection.delete(uri);
+  } else {
+    diagnosticCollection.set(uri, filtered);
+  }
+}
+
+function resolveFileUri(filePath: string, workspaceRoot: string): vscode.Uri {
+  const fs = require('fs');
+  const direct = path.join(workspaceRoot, filePath);
+  if (fs.existsSync(direct)) {
+    return vscode.Uri.file(direct);
+  }
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const candidate = path.join(folder.uri.fsPath, filePath);
+    if (fs.existsSync(candidate)) {
+      return vscode.Uri.file(candidate);
+    }
+  }
+  // Suffix matching: try stripping leading path segments
+  const segments = filePath.split('/');
+  for (let i = 1; i < segments.length; i++) {
+    const suffix = segments.slice(i).join('/');
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const candidate = path.join(folder.uri.fsPath, suffix);
+      if (fs.existsSync(candidate)) {
+        return vscode.Uri.file(candidate);
+      }
+    }
+  }
+  return vscode.Uri.file(direct);
 }
 
 function mapSeverity(severity: string): vscode.DiagnosticSeverity {

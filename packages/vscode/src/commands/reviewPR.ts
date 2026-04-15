@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { ReviewEngine, detectFramework, BitbucketClient, GitHubClient, buildStandalonePrompt, parseStandaloneResponse, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from 'ira-review';
+import { ReviewEngine, detectFramework, BitbucketClient, GitHubClient, buildStandalonePrompt, parseStandaloneResponse, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt, resolveIssueLocations, annotateDiffWithLineNumbers as annotateDiffWithLineNumbersCore } from 'ira-review';
 import type { IraConfig, ReviewResult, ReviewComment, BitbucketConfig, GitHubConfig } from 'ira-review';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { updateStatusBar } from '../providers/statusBarProvider';
@@ -17,7 +17,8 @@ import { AuthProvider } from '../services/authProvider';
 import { isNoAIProviderError, showAISetupPrompt } from '../services/ollamaSetup';
 import { resolveAiApiKey } from '../utils/credentialPrompts';
 import * as msg from '../utils/messages';
-import * as cp from 'child_process';
+import { execGit, detectRepo } from '../utils/git';
+import { BitbucketServerDiffResponse, convertBBServerDiffToUnified, parseDiffByFile } from '../utils/diff';
 
 export async function reviewPR(
   context: vscode.ExtensionContext,
@@ -75,13 +76,34 @@ export async function reviewPR(
     if (!prNumber) return;
   }
 
+  // For local mode, check for uncommitted changes before showing progress
+  if (reviewMode.id === 'local') {
+    const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
+      ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+      : undefined;
+    const gitRoot = activeFileDir
+      ? await execGit('git rev-parse --show-toplevel', activeFileDir).catch(() => workspaceRoot)
+      : workspaceRoot;
+    const status = await execGit('git status --porcelain', gitRoot).catch(() => '');
+    if (!status.trim()) {
+      const action = await vscode.window.showInformationMessage(
+        'No uncommitted changes found. If you already have a PR, use "I have a PR" to review it.',
+        'Review a PR',
+      );
+      if (action === 'Review a PR') {
+        vscode.commands.executeCommand('ira.reviewPR');
+      }
+      return;
+    }
+  }
+
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: msg.progress.reviewPR, cancellable: false },
-    async () => {
+    { location: vscode.ProgressLocation.Notification, title: msg.progress.reviewPR, cancellable: true },
+    async (progress, token) => {
       try {
         const config = vscode.workspace.getConfiguration('ira');
 
-        // Local diff mode — review changes against default branch
+        // Local diff mode — review uncommitted changes
         if (reviewMode.id === 'local') {
           await runLocalDiffReview(config, workspaceRoot, context, diagnosticCollection, statusBar, treeProvider, codeLensProvider);
           return;
@@ -114,9 +136,21 @@ export async function reviewPR(
 
         let result: ReviewResult;
 
+        progress.report({ message: 'Authenticated — fetching PR diff…' });
+
         if (useCopilot) {
           // Copilot mode: fetch diff via SCM client, review with VS Code LM API
-          result = await runCopilotReview(config, scmProvider, repoInfo, gheUrl, scmToken, prNumber!, workspaceRoot);
+          result = await runCopilotReview(config, scmProvider, repoInfo, gheUrl, scmToken, prNumber!, workspaceRoot, {
+            onFileReviewed: (comments, fileIdx, totalFiles) => {
+              updateDiagnostics(comments, diagnosticCollection, workspaceRoot);
+              treeProvider.update(comments, workspaceRoot);
+              codeLensProvider.update(comments);
+            },
+            onProgress: (message) => {
+              progress.report({ message });
+            },
+          }, token);
+          if (token.isCancellationRequested) { vscode.window.showInformationMessage('IRA: Operation cancelled.'); return; }
         } else {
           // Standard mode: use ReviewEngine with external AI provider
           const iraConfig: IraConfig = {
@@ -146,11 +180,14 @@ export async function reviewPR(
 
           const jiraUrl = config.get<string>('jiraUrl', '');
           if (jiraUrl) {
+            const acField = config.get<string>('jiraAcField', '') || undefined;
             iraConfig.jira = {
               baseUrl: jiraUrl,
               email: config.get<string>('jiraEmail', ''),
               token: await authInstance.getJiraToken(),
+              ...(acField && { acceptanceCriteriaField: acField }),
             };
+            iraConfig.jiraAcSource = (config.get<string>('jiraAcSource', 'both') as IraConfig['jiraAcSource']);
           }
 
           // Detect JIRA ticket from branch name
@@ -162,12 +199,16 @@ export async function reviewPR(
             }
           }
 
+          progress.report({ message: 'Diff loaded — AI is reviewing your code…' });
           const engine = new ReviewEngine(iraConfig);
           result = await engine.run();
+          if (token.isCancellationRequested) { vscode.window.showInformationMessage('IRA: Operation cancelled.'); return; }
         }
 
+        progress.report({ message: 'Review complete — highlighting issues…' });
         setLastResult(result);
 
+        progress.report({ message: 'Wrapping up — sending notifications…' });
         // Send notifications if configured
         try {
           const slackWebhookUrl = config.get<string>('slackWebhookUrl', '');
@@ -191,7 +232,7 @@ export async function reviewPR(
         treeProvider.update(result.comments, workspaceRoot);
         codeLensProvider.update(result.comments);
 
-        // Save to review history (all users — UI gated behind Pro)
+        // Save to review history
         try {
           const historyStore = ReviewHistoryStore.getInstance();
           await historyStore.save(result);
@@ -214,6 +255,11 @@ export async function reviewPR(
   );
 }
 
+interface ProgressCallbacks {
+  onFileReviewed?: (comments: ReviewComment[], fileIndex: number, totalFiles: number) => void;
+  onProgress?: (message: string) => void;
+}
+
 async function runCopilotReview(
   config: vscode.WorkspaceConfiguration,
   scmProvider: 'github' | 'bitbucket',
@@ -222,6 +268,8 @@ async function runCopilotReview(
   scmToken: string,
   prNumber: string,
   workspaceRoot: string,
+  callbacks?: ProgressCallbacks,
+  token?: vscode.CancellationToken,
 ): Promise<ReviewResult> {
   // 1. Fetch diff
   const bbUrl = config.get<string>('bitbucketUrl', '');
@@ -278,23 +326,31 @@ async function runCopilotReview(
   const sensitiveAreas = loadSensitiveAreas(workspaceRoot);
 
   // 5. Review each file with Copilot
+  callbacks?.onProgress?.(`Found ${diffByFile.size} changed files — starting review…`);
   const copilot = new CopilotAIProvider();
   const comments: ReviewComment[] = [];
 
   let fileIndex = 0;
+  const totalFiles = diffByFile.size;
   for (const [filePath, diff] of diffByFile) {
+    if (token?.isCancellationRequested) break;
     fileIndex++;
+    callbacks?.onProgress?.(`Reviewing ${filePath.split('/').pop()} (${fileIndex}/${totalFiles})…`);
     try {
       const filteredRules = filterRulesByPath(rules, filePath);
       const rulesSection = formatRulesForPrompt(filteredRules);
       const sensitiveMatch = matchSensitiveArea(sensitiveAreas, filePath);
       const sensitiveContext = sensitiveMatch ? formatSensitiveAreaForPrompt(sensitiveMatch) : undefined;
-      const annotatedDiff = annotateDiffWithLineNumbers(diff);
+      const annotatedDiff = annotateDiffWithLineNumbersCore(diff);
       const prompt = buildStandalonePrompt(filePath, annotatedDiff, framework, null, rulesSection, sensitiveContext);
       const rawResponse = await copilot.rawReview(prompt);
       // Parse the raw AI response into structured issues
       try {
-        const issues = parseStandaloneResponse(rawResponse);
+        const rawIssues = parseStandaloneResponse(rawResponse);
+        const resolved = resolveIssueLocations(rawIssues, annotatedDiff);
+        const issues = resolved.filter(
+          (issue) => issue.evidence && issue.evidence.length >= 20
+        );
         for (const issue of issues) {
           comments.push({
             filePath,
@@ -319,9 +375,10 @@ async function runCopilotReview(
           aiReview: { explanation: rawResponse, impact: 'See above', suggestedFix: 'Review manually' },
         });
       }
+      callbacks?.onFileReviewed?.(comments, fileIndex, totalFiles);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.warn(`IRA: AI review skipped for ${filePath}: ${msg}`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`IRA: AI review skipped for ${filePath}: ${errMsg}`);
     }
   }
 
@@ -382,10 +439,9 @@ async function runLocalDiffReview(
     ? await execGit('git rev-parse --show-toplevel', activeFileDir).catch(() => workspaceRoot)
     : workspaceRoot;
 
-  const defaultBranch = await detectDefaultBranch(gitRoot);
-  let fullDiff = await execGit(`git diff ${defaultBranch}`, gitRoot);
+  let fullDiff = await execGit('git diff HEAD', gitRoot);
   if (!fullDiff.trim()) {
-    fullDiff = await execGit('git diff HEAD', gitRoot);
+    fullDiff = await execGit('git diff', gitRoot);
   }
   if (!fullDiff.trim()) {
     vscode.window.showWarningMessage(msg.noChanges());
@@ -409,7 +465,7 @@ async function runLocalDiffReview(
       const rulesSection = formatRulesForPrompt(filteredRules);
       const sensitiveMatch = matchSensitiveArea(sensitiveAreas, filePath);
       const sensitiveContext = sensitiveMatch ? formatSensitiveAreaForPrompt(sensitiveMatch) : undefined;
-      const annotatedDiff = annotateDiffWithLineNumbers(diff);
+      const annotatedDiff = annotateDiffWithLineNumbersCore(diff);
       const prompt = buildStandalonePrompt(filePath, annotatedDiff, framework, null, rulesSection, sensitiveContext);
 
       let rawResponse: string;
@@ -428,7 +484,8 @@ async function runLocalDiffReview(
         rawResponse = (await provider.review(prompt)).explanation;
       }
 
-      const issues = parseStandaloneResponse(rawResponse);
+      const rawIssues = parseStandaloneResponse(rawResponse);
+      const issues = resolveIssueLocations(rawIssues, annotatedDiff);
       for (const issue of issues) {
         comments.push({
           filePath,
@@ -495,101 +552,33 @@ async function runLocalDiffReview(
 }
 
 async function detectDefaultBranch(cwd: string): Promise<string> {
+  // Try to auto-detect a sensible default
+  let detected = '';
   try {
     const ref = await execGit('git symbolic-ref refs/remotes/origin/HEAD', cwd);
-    return ref.replace('refs/remotes/origin/', '');
+    detected = ref.replace('refs/remotes/origin/', '');
   } catch { /* ignore */ }
-  for (const branch of ['main', 'master']) {
-    try {
-      await execGit(`git rev-parse --verify ${branch}`, cwd);
-      return branch;
-    } catch { /* ignore */ }
-  }
-  return 'main';
-}
-
-function parseDiffByFile(diff: string): Map<string, string> {
-  const fileMap = new Map<string, string>();
-  const fileSections = diff.split(/^diff --git /m);
-  for (const section of fileSections) {
-    if (!section.trim()) continue;
-
-    // Standard: diff --git a/file.ts b/file.ts
-    // Bitbucket Server: diff --git src://file.ts dst://file.ts
-    const headerMatch = section.match(/^(?:a\/|src:\/\/)(.+?)\s+(?:b\/|dst:\/\/)(.+)/);
-    if (!headerMatch) continue;
-    const bPath = headerMatch[2];
-    if (bPath === '/dev/null') continue;
-    fileMap.set(bPath, `diff --git ${section}`);
-  }
-  return fileMap;
-}
-
-/**
- * Annotate diff lines with absolute file line numbers so the AI reports accurate positions.
- * Transforms:  "+  const x = 1;"  →  "L280: +  const x = 1;"
- */
-function annotateDiffWithLineNumbers(diffSection: string): string {
-  const lines = diffSection.split('\n');
-  const result: string[] = [];
-  let currentLine = 1;
-
-  for (const line of lines) {
-    // Parse hunk header to get the starting line number
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
-    if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
-      result.push(line);
-      continue;
-    }
-
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      result.push(`L${currentLine}: ${line}`);
-      currentLine++;
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
-      result.push(line); // removed lines don't advance the line counter
-    } else {
-      // context line
-      result.push(`L${currentLine}: ${line}`);
-      currentLine++;
+  if (!detected) {
+    for (const branch of ['develop', 'main', 'master']) {
+      try {
+        await execGit(`git rev-parse --verify ${branch}`, cwd);
+        detected = branch;
+        break;
+      } catch { /* ignore */ }
     }
   }
-  return result.join('\n');
-}
 
-// Bitbucket Server diff JSON types
-interface BitbucketServerDiffResponse {
-  diffs: Array<{
-    source?: { toString: string };
-    destination?: { toString: string };
-    hunks?: Array<{
-      segments: Array<{
-        type: 'ADDED' | 'REMOVED' | 'CONTEXT';
-        lines: Array<{ line: string; source?: number; destination?: number }>;
-      }>;
-    }>;
-  }>;
-}
+  const currentBranch = await execGit('git branch --show-current', cwd).catch(() => '');
 
-function convertBBServerDiffToUnified(json: BitbucketServerDiffResponse): string {
-  const parts: string[] = [];
-  for (const diff of json.diffs ?? []) {
-    const src = diff.source?.toString ?? '/dev/null';
-    const dst = diff.destination?.toString ?? '/dev/null';
-    parts.push(`diff --git a/${src} b/${dst}`);
-    parts.push(`--- a/${src}`);
-    parts.push(`+++ b/${dst}`);
-    for (const hunk of diff.hunks ?? []) {
-      parts.push('@@ -1,0 +1,0 @@');
-      for (const seg of hunk.segments) {
-        const prefix = seg.type === 'ADDED' ? '+' : seg.type === 'REMOVED' ? '-' : ' ';
-        for (const line of seg.lines) {
-          parts.push(`${prefix}${line.line}`);
-        }
-      }
-    }
-  }
-  return parts.join('\n');
+  // Always confirm with the user — auto-detection can't handle feature-to-feature branching
+  const input = await vscode.window.showInputBox({
+    prompt: `Which branch should we diff against?${currentBranch ? ` (current: ${currentBranch})` : ''}`,
+    value: detected || 'develop',
+    placeHolder: 'e.g. develop, main, feature/parent-branch',
+    ignoreFocusOut: true,
+  });
+  if (!input) return detected || 'main';
+  return input.trim();
 }
 
 async function detectPRNumber(cwd: string): Promise<string | null> {
@@ -600,48 +589,4 @@ async function detectPRNumber(cwd: string): Promise<string | null> {
     placeHolder: msg.prompts.prNumberPlaceholder,
   });
   return prNumber ?? null;
-}
-
-async function detectRepo(cwd: string): Promise<{ owner: string; repo: string; baseUrl?: string }> {
-  try {
-    const url = await execGit('git remote get-url origin', cwd);
-    // github.com (SSH or HTTPS)
-    const ghMatch = url.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-    if (ghMatch) {
-      return { owner: ghMatch[1], repo: ghMatch[2] };
-    }
-
-    // Bitbucket Server: https://bitbucket.srv.company.com/scm/PROJECT/repo.git
-    const bbServerMatch = url.match(/https?:\/\/[^/]+\/scm\/([^/]+)\/([^/.]+)/);
-    if (bbServerMatch) {
-      return { owner: bbServerMatch[1], repo: bbServerMatch[2] };
-    }
-
-    // Bitbucket Server SSH: ssh://git@bitbucket.srv.company.com/PROJECT/repo.git
-    const bbSshMatch = url.match(/@[^/]+[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
-    if (bbSshMatch) {
-      return { owner: bbSshMatch[1], repo: bbSshMatch[2] };
-    }
-
-    // GitHub Enterprise: https://ghe.company.com/owner/repo.git
-    const gheMatch = url.match(/https?:\/\/([^/]+)\/([^/]+)\/([^/.]+)/);
-    if (gheMatch) {
-      return { owner: gheMatch[2], repo: gheMatch[3], baseUrl: `https://${gheMatch[1]}/api/v3` };
-    }
-  } catch {
-    // ignore
-  }
-  return { owner: '', repo: '' };
-}
-
-function execGit(command: string, cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cp.exec(command, { cwd }, (err, stdout) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(stdout.trim());
-      }
-    });
-  });
 }

@@ -95,6 +95,35 @@ export function buildSummary(result: ReviewResult): string {
     lines.push("");
   }
 
+  // Generated acceptance criteria (when ticket had no ACs)
+  if (result.acGeneration && result.acGeneration.criteria.length > 0) {
+    const ag = result.acGeneration;
+    lines.push(`## 📝 Suggested Acceptance Criteria (${ag.totalCriteria} generated)`);
+    lines.push("");
+    lines.push(`> No acceptance criteria found in ${ag.jiraKey}. IRA inferred the following from: ${ag.sources.join(", ")}.`);
+    lines.push("");
+    for (const ac of ag.criteria) {
+      lines.push(`**${ac.id}:**`);
+      lines.push(`- **Given** ${ac.given}`);
+      lines.push(`- **When** ${ac.when}`);
+      lines.push(`- **Then** ${ac.then}`);
+      lines.push("");
+    }
+    if (ag.reviewHints && ag.reviewHints.length > 0) {
+      lines.push(`### ❓ Questions for PO`);
+      lines.push(`> IRA could not determine the following from the code. Answering these will strengthen the ACs above:`);
+      lines.push("");
+      for (const hint of ag.reviewHints) {
+        lines.push(`- ${hint}`);
+      }
+      lines.push("");
+    }
+    if (ag.parseWarning) {
+      lines.push(`> ⚠️ **Warning:** ${ag.parseWarning}`);
+      lines.push("");
+    }
+  }
+
   // Generated test cases
   if (result.testGeneration && result.testGeneration.testCases.length > 0) {
     const tg = result.testGeneration;

@@ -100,4 +100,32 @@ describe("buildSummary", () => {
     expect(summary).toContain("PROJ-123");
     expect(summary).toContain("Login works");
   });
+
+  it("includes generated ACs with review hints when present", () => {
+    const result: ReviewResult = {
+      ...baseResult,
+      acGeneration: {
+        jiraKey: "PAY-101",
+        summary: "Add payment",
+        criteria: [
+          { id: "AC-1", given: "a valid card", when: "user pays", then: "charge succeeds" },
+        ],
+        totalCriteria: 1,
+        sources: ["ticket summary", "PR diff"],
+        reviewHints: ["Does this need PCI-DSS?"],
+      },
+    };
+    const summary = buildSummary(result);
+    expect(summary).toContain("Suggested Acceptance Criteria");
+    expect(summary).toContain("AC-1");
+    expect(summary).toContain("a valid card");
+    expect(summary).toContain("Questions for PO");
+    expect(summary).toContain("PCI-DSS");
+  });
+
+  it("omits AC section when acGeneration is null", () => {
+    const summary = buildSummary(baseResult);
+    expect(summary).not.toContain("Suggested Acceptance Criteria");
+    expect(summary).not.toContain("Questions for PO");
+  });
 });

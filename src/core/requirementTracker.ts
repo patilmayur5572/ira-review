@@ -1,8 +1,7 @@
 /**
  * IRA — Intelligent Review Assistant
  * Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
- * Proprietary License. See LICENSE file for details.
- * Commercial license available — contact patilmayur5572@gmail.com
+ * MIT License. See LICENSE file for details.
  */
 
 import type { JiraIssue, RequirementCompletionResult, RequirementStatus } from "../types/jira.js";

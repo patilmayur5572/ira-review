@@ -66,3 +66,20 @@ export interface RequirementCompletionResult {
   overallPass: boolean;
   parseWarning?: string;
 }
+
+export interface GeneratedAC {
+  id: string;
+  given: string;
+  when: string;
+  then: string;
+}
+
+export interface ACGenerationResult {
+  jiraKey: string;
+  summary: string;
+  criteria: GeneratedAC[];
+  totalCriteria: number;
+  sources: string[];
+  reviewHints: string[];
+  parseWarning?: string;
+}
