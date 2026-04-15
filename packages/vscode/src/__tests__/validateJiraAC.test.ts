@@ -44,6 +44,12 @@ vi.mock('../services/authProvider', () => {
   };
 });
 
+// Mock markdownPreview
+const mockOpenMarkdownPreview = vi.fn();
+vi.mock('../utils/markdownPreview', () => ({
+  openMarkdownPreview: (...args: any[]) => mockOpenMarkdownPreview(...args),
+}));
+
 // Mock resolveJiraCredentials
 const mockResolveJiraCredentials = vi.fn().mockResolvedValue({
   url: 'https://jira.test.com',
@@ -155,8 +161,7 @@ describe('validateJiraAC', () => {
     await validateJiraAC();
 
     expect(vscode.window.withProgress).toHaveBeenCalled();
-    expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
-    expect(vscode.window.showTextDocument).toHaveBeenCalled();
+    expect(mockOpenMarkdownPreview).toHaveBeenCalled();
   });
 
   it('should show error when JIRA fetch fails', async () => {

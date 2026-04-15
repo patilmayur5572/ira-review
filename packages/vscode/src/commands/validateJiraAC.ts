@@ -10,8 +10,9 @@ import type { AIProviderType } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { resolveJiraCredentials, resolveAiApiKey } from '../utils/credentialPrompts';
+import { openMarkdownPreview } from '../utils/markdownPreview';
 import * as msg from '../utils/messages';
-import { execGit, detectRepo, detectDefaultBranch } from '../utils/git';
+import { execGit, detectRepo, detectDefaultBranch, fetchPRSourceBranch } from '../utils/git';
 
 const MAX_DIFF_LENGTH = 100_000;
 
@@ -26,27 +27,8 @@ export async function validateJiraAC(): Promise<void> {
   }
   const workspaceRoot = await execGit('git rev-parse --show-toplevel', fallbackDir).catch(() => fallbackDir);
 
-  // Step 1: Detect JIRA ticket from branch name, or prompt
-  const branch = await execGit('git branch --show-current', workspaceRoot).catch(() => '');
-  const ticketMatch = branch.match(/([A-Z][A-Z0-9]+-\d+)/);
-  let jiraKey = ticketMatch?.[1] ?? '';
-
-  if (!jiraKey) {
-    const input = await vscode.window.showInputBox({
-      prompt: msg.prompts.jiraTicket,
-      placeHolder: msg.prompts.jiraTicketPlaceholder,
-      ignoreFocusOut: true,
-    });
-    if (!input) return;
-    jiraKey = input.trim().toUpperCase();
-  }
-
-  // Step 2: Resolve JIRA credentials
+  // Step 1: Choose diff source before showing progress
   const config = vscode.workspace.getConfiguration('ira');
-  const jiraCreds = await resolveJiraCredentials();
-  if (!jiraCreds) return;
-
-  // Step 3: Choose diff source before showing progress
   const diffSource = await vscode.window.showQuickPick(
     [
       { label: '$(git-pull-request) A PR number', id: 'pr' as const },
@@ -61,6 +43,38 @@ export async function validateJiraAC(): Promise<void> {
     prNum = await vscode.window.showInputBox({ prompt: 'Enter the PR number', placeHolder: 'e.g. 123', ignoreFocusOut: true });
     if (!prNum) return;
   }
+
+  // Step 2: Detect JIRA ticket from branch name (PR source branch if PR, else local)
+  let branch = '';
+  if (prNum) {
+    const repoInfo = await detectRepo(workspaceRoot);
+    const scmSession = await AuthProvider.getInstance().resolveScmSession(workspaceRoot);
+    if (scmSession) {
+      const scmProvider = (scmSession.provider === 'github-enterprise' ? 'github' : scmSession.provider) as 'github' | 'bitbucket';
+      const bbUrl = config.get<string>('bitbucketUrl', '');
+      const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
+      branch = await fetchPRSourceBranch(scmProvider, repoInfo, prNum, scmSession.accessToken, { bitbucketUrl: bbUrl || undefined, gheUrl: gheUrl || undefined });
+    }
+  }
+  if (!branch) {
+    branch = await execGit('git branch --show-current', workspaceRoot).catch(() => '');
+  }
+  const ticketMatch = branch.match(/([A-Z][A-Z0-9]+-\d+)/i);
+  let jiraKey = ticketMatch ? ticketMatch[1].toUpperCase() : '';
+
+  if (!jiraKey) {
+    const input = await vscode.window.showInputBox({
+      prompt: msg.prompts.jiraTicket,
+      placeHolder: msg.prompts.jiraTicketPlaceholder,
+      ignoreFocusOut: true,
+    });
+    if (!input) return;
+    jiraKey = input.trim().toUpperCase();
+  }
+
+  // Step 3: Resolve JIRA credentials
+  const jiraCreds = await resolveJiraCredentials();
+  if (!jiraCreds) return;
 
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: msg.progress.validateAC(jiraKey), cancellable: false },
@@ -164,9 +178,8 @@ export async function validateJiraAC(): Promise<void> {
           result = response.explanation;
         }
 
-        // Step 6: Show results
-        const doc = await vscode.workspace.openTextDocument({ content: result, language: 'markdown' });
-        await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+        // Step 6: Show results in rendered markdown preview
+        await openMarkdownPreview(result, `ac-validation-${jiraKey}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         vscode.window.showErrorMessage(msg.acValidationFailed(message));

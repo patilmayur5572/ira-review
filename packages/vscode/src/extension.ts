@@ -34,6 +34,27 @@ export function setLastResult(result: ReviewResult | null): void {
   lastResult = result;
 }
 
+/** Stores the active PR context so per-issue "Post to PR" commands can access it. */
+export interface PRContext {
+  prNumber: string;
+  scmProvider: 'github' | 'bitbucket';
+  owner: string;
+  repo: string;
+  scmToken: string;
+  baseUrl?: string;
+  bitbucketUrl?: string;
+}
+
+let activePRContext: PRContext | null = null;
+
+export function setPRContext(ctx: PRContext | null): void {
+  activePRContext = ctx;
+}
+
+export function getPRContext(): PRContext | null {
+  return activePRContext;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   console.log('IRA extension is now active');
 
@@ -217,6 +238,58 @@ export function activate(context: vscode.ExtensionContext): void {
       codeLensProvider.removeComment(comment);
       treeProvider.removeComment(comment);
       removeDiagnostic(comment, diagnosticCollection, workspaceRoot);
+    }),
+    vscode.commands.registerCommand('ira.postIssueToPR', async (comment) => {
+      const ctx = getPRContext();
+      if (!ctx) { vscode.window.showWarningMessage('No active PR context — run "Review PR" first.'); return; }
+      try {
+        const { GitHubClient, BitbucketClient } = await import('ira-review');
+        const scmClient = ctx.scmProvider === 'github'
+          ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+          : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken, ...(ctx.bitbucketUrl && { baseUrl: ctx.bitbucketUrl }) } as any);
+        await scmClient.postComment(comment, ctx.prNumber);
+        vscode.window.showInformationMessage(`Posted issue to PR #${ctx.prNumber} ✅`);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Failed to post issue: ${err instanceof Error ? err.message : err}`);
+      }
+    }),
+    vscode.commands.registerCommand('ira.postAllIssuesToPR', async () => {
+      const ctx = getPRContext();
+      const result = getLastResult();
+      if (!ctx || !result || result.comments.length === 0) return;
+      try {
+        const { GitHubClient, BitbucketClient } = await import('ira-review');
+        const scmClient = ctx.scmProvider === 'github'
+          ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+          : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken, ...(ctx.bitbucketUrl && { baseUrl: ctx.bitbucketUrl }) } as any);
+        let posted = 0;
+        for (const comment of result.comments) {
+          await scmClient.postComment(comment, ctx.prNumber);
+          posted++;
+        }
+        vscode.window.showInformationMessage(`Posted ${posted} issue${posted !== 1 ? 's' : ''} to PR #${ctx.prNumber} ✅`);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Failed to post issues: ${err instanceof Error ? err.message : err}`);
+      }
+    }),
+    vscode.commands.registerCommand('ira.postACToPR', async () => {
+      const ctx = getPRContext();
+      const result = getLastResult();
+      if (!ctx || !result?.acceptanceValidation) return;
+      try {
+        const { GitHubClient, BitbucketClient } = await import('ira-review');
+        const scmClient = ctx.scmProvider === 'github'
+          ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+          : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken, ...(ctx.bitbucketUrl && { baseUrl: ctx.bitbucketUrl }) } as any);
+        const av = result.acceptanceValidation;
+        const rows = av.criteria.map(c => `| ${c.met ? '✅' : '❌'} | ${c.description} | ${c.evidence} |`).join('\n');
+        const passCount = av.criteria.filter(c => c.met).length;
+        const summary = `# JIRA AC Validation — ${av.jiraKey}\n\n**${av.summary}**\n\n## Result: ${passCount}/${av.criteria.length} criteria met ${av.overallPass ? '✅' : '❌'}\n\n| Status | Criteria | Evidence |\n|--------|----------|----------|\n${rows}\n\n---\n*Validated by [IRA Review](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)*`;
+        await scmClient.postSummary(summary, ctx.prNumber);
+        vscode.window.showInformationMessage(`AC validation posted to PR #${ctx.prNumber} ✅`);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Failed to post AC validation: ${err instanceof Error ? err.message : err}`);
+      }
     }),
     vscode.languages.registerCodeLensProvider({ scheme: 'file' }, codeLensProvider),
   );
