@@ -18,23 +18,16 @@ All notable changes to the IRA VS Code extension will be documented in this file
 
 ### Added
 
-- **Pro License System** — Polar.sh-powered license activation/deactivation
-  - Secure key storage via VS Code SecretStorage
-  - Machine ID binding for per-device activation limits
-  - 24-hour validation cache with 7-day offline grace period
-  - Commands: `IRA: Activate Pro License`, `IRA: Deactivate Pro License`
-- **Auto-Review on Save** ⭐ Pro — Automatically reviews files on save (`ira.autoReviewOnSave`)
+- **Auto-Review on Save** — Automatically reviews files on save (`ira.autoReviewOnSave`)
   - Per-file 2-second debounce to avoid excessive API calls
-  - Soft upsell prompt for free users (shown once per session)
-- **One-Click "Apply Fix"** ⭐ Pro — CodeLens action to generate and apply AI fixes
+- **One-Click "Apply Fix"** — CodeLens action to generate and apply AI fixes
   - Confirmation dialog before applying changes
   - Full undo support (Ctrl+Z)
 - **Generate PR Description** — AI-powered PR description from diff (free for all users)
   - JIRA ticket auto-detection from branch name (e.g. `feature/PROJ-123-…`)
   - Supports both existing PRs and local `git diff main...HEAD`
-- **Review History** ⭐ Pro — Browse past review results in a dedicated tree view
-- **Trends Dashboard** ⭐ Pro — Visualize issues over time, severity breakdown, and recurring rules
-- Pro badge in status bar when license is active
+- **Review History** — Browse past review results in a dedicated tree view
+- **Trends Dashboard** — Visualize issues over time, severity breakdown, and recurring rules
 - **Slack & Teams Notifications** — configure webhook URLs in settings for post-review alerts
   - Risk threshold filtering (`ira.notifyMinRisk`) — only notify on HIGH/CRITICAL
   - AC failure notifications (`ira.notifyOnAcFail`) — alert when JIRA criteria fail
@@ -56,7 +49,7 @@ All notable changes to the IRA VS Code extension will be documented in this file
 
 ### Changed
 
-- License: switched from AGPL-3.0 to proprietary
+- License: MIT
 
 ## [0.1.0] — 2025-04-02
 

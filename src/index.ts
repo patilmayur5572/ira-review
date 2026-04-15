@@ -1,8 +1,7 @@
 /**
  * IRA — Intelligent Review Assistant
  * Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
- * Proprietary License. See LICENSE file for details.
- * Commercial license available — contact patilmayur5572@gmail.com
+ * MIT License. See LICENSE file for details.
  */
 
 // Core
@@ -15,10 +14,11 @@ export { validateAcceptanceCriteria } from "./core/acceptanceValidator.js";
 export { generateTestCases } from "./core/testGenerator.js";
 export { trackRequirementCompletion } from "./core/requirementTracker.js";
 export { buildSummary } from "./core/summaryBuilder.js";
+export { generateAcceptanceCriteria, formatACsForJiraComment } from "./core/acGenerator.js";
 
 // AI
 export { createAIProvider, parseAIResponse } from "./ai/aiClient.js";
-export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse } from "./ai/promptBuilder.js";
+export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, extractValidLineNumbers, validateIssuesAgainstDiff, resolveIssueLocations, correctLineNumbers, annotateDiffWithLineNumbers } from "./ai/promptBuilder.js";
 
 // SCM
 export { BitbucketClient } from "./scm/bitbucket.js";
@@ -51,10 +51,13 @@ export type {
   AIProvider,
   SCMProvider,
   GroupedIssues,
+  PRState,
 } from "./types/review.js";
 export type { AIFoundIssue } from "./ai/promptBuilder.js";
 export type { RiskReport, RiskFactor, RiskLevel, ComplexityReport, ComplexityMetric } from "./types/risk.js";
-export type { JiraIssue, AcceptanceValidationResult, AcceptanceCriterion, TestFramework, GeneratedTestCase, TestGenerationResult, RequirementStatus, RequirementCompletionResult } from "./types/jira.js";
+export type { JiraIssue, AcceptanceValidationResult, AcceptanceCriterion, TestFramework, GeneratedTestCase, TestGenerationResult, RequirementStatus, RequirementCompletionResult, GeneratedAC, ACGenerationResult } from "./types/jira.js";
+export type { ACGenerationContext } from "./core/acGenerator.js";
 export type { RetryOptions } from "./utils/retry.js";
 export type { FlatConfig } from "./utils/env.js";
 export type { IraRule, IraRulesFile, SensitiveArea } from "./utils/rulesFile.js";
+

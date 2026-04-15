@@ -2,11 +2,11 @@ import type { IraConfig, BitbucketConfig, GitHubConfig } from "../types/config.j
 import type { ReviewComment, ReviewResult, SCMProvider } from "../types/review.js";
 import type { SonarIssue } from "../types/sonar.js";
 import type { ComplexityReport } from "../types/risk.js";
-import type { AcceptanceValidationResult, TestGenerationResult, RequirementCompletionResult } from "../types/jira.js";
+import type { AcceptanceValidationResult, TestGenerationResult, RequirementCompletionResult, ACGenerationResult } from "../types/jira.js";
 import { SonarClient } from "./sonarClient.js";
 import { filterIssues, groupIssuesByFile } from "./issueProcessor.js";
 import { detectFramework } from "../frameworks/detector.js";
-import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, annotateDiffWithLineNumbers } from "../ai/promptBuilder.js";
+import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, annotateDiffWithLineNumbers, resolveIssueLocations } from "../ai/promptBuilder.js";
 import { loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "../utils/rulesFile.js";
 import { createAIProvider } from "../ai/aiClient.js";
 import type { AIFoundIssue } from "../ai/promptBuilder.js";
@@ -23,6 +23,7 @@ import { trackRequirementCompletion } from "./requirementTracker.js";
 import { buildSummary } from "./summaryBuilder.js";
 import { Notifier } from "../integrations/notifier.js";
 import { resolveGitRoot } from "../utils/gitRoot.js";
+import { generateAcceptanceCriteria, formatACsForJiraComment } from "./acGenerator.js";
 
 const AI_CONCURRENCY = 3;
 
@@ -43,6 +44,28 @@ export class ReviewEngine {
     const warnings: string[] = [];
     const repoPath = this.config.repoPath ?? resolveGitRoot();
     const scmClient = this.createSCMClient();
+
+    // 0. Check PR state — bail early if closed/merged
+    if (scmClient.getPRState) {
+      try {
+        const prState = await scmClient.getPRState(pullRequestId);
+        if (prState === "merged") {
+          throw new Error(
+            `PR #${pullRequestId} is already merged — IRA reviews open pull requests.\n` +
+            `  💡 Run against an open PR to get actionable feedback before code lands.`,
+          );
+        }
+        if (prState === "closed" || prState === "declined") {
+          throw new Error(
+            `PR #${pullRequestId} is ${prState} — IRA reviews open pull requests.\n` +
+            `  💡 Re-open the PR or create a new one to get a fresh review.`,
+          );
+        }
+      } catch (error) {
+        // Re-throw user-facing errors, ignore network failures (let the review proceed)
+        if (error instanceof Error && (error.message.includes("IRA reviews") || error.message.includes("was not found"))) throw error;
+      }
+    }
 
     // 1. Fetch issues from SonarQube (if configured)
     let allIssues: SonarIssue[] = [];
@@ -83,14 +106,28 @@ export class ReviewEngine {
       }
     }
 
-    // 5. Fetch PR diff for AI context (soft fail)
+    // 5. Fetch PR diff for AI context (soft fail, with per-file fallback)
     let diffByFile = new Map<string, string>();
     try {
       const fullDiff = await scmClient.getDiff(pullRequestId);
       diffByFile = parseDiffByFile(fullDiff);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Unknown error";
-      warnings.push(`PR diff fetch failed, AI will review without code context: ${msg}`);
+      warnings.push(`Full diff fetch failed: ${msg}`);
+    }
+
+    // Fallback: try per-file diff fetching for large PRs or when full diff parsed empty
+    if (diffByFile.size === 0 && scmClient.getDiffPerFile) {
+      try {
+        console.log(`  Trying per-file diff fallback...`);
+        diffByFile = await scmClient.getDiffPerFile(pullRequestId);
+        if (diffByFile.size > 0) {
+          console.log(`  Per-file fallback succeeded: ${diffByFile.size} files`);
+        }
+      } catch (fallbackError) {
+        const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : "Unknown error";
+        warnings.push(`Per-file diff fallback also failed: ${fallbackMsg}`);
+      }
     }
 
     // Standalone mode requires diff context — fail fast if empty
@@ -190,9 +227,16 @@ export class ReviewEngine {
             const prompt = buildStandalonePrompt(filePath, annotatedDiff, framework, sourceFile, rulesSection, sensitiveContext);
             const response = await aiProvider.review(prompt);
             // explanation field contains a JSON-encoded array of issues
-            const foundIssues = parseStandaloneResponse(response.explanation);
+            const rawIssues = parseStandaloneResponse(response.explanation);
 
-            return foundIssues.map((issue: AIFoundIssue) => ({
+            // Resolve line numbers from AI snippets against actual diff content
+            const foundIssues = resolveIssueLocations(rawIssues, annotatedDiff);
+
+            const verifiedIssues = foundIssues.filter(
+              (issue) => issue.evidence && issue.evidence.length >= 20
+            );
+
+            return verifiedIssues.map((issue: AIFoundIssue) => ({
               filePath,
               line: issue.line,
               rule: `IRA/${issue.category}`,
@@ -259,28 +303,84 @@ export class ReviewEngine {
     let acceptanceValidation: AcceptanceValidationResult | null = null;
     let testGeneration: TestGenerationResult | null = null;
     let requirementCompletion: RequirementCompletionResult | null = null;
+    let acGeneration: ACGenerationResult | null = null;
     if (this.config.jira && this.config.jiraTicket) {
       try {
         const jiraClient = new JiraClient(this.config.jira);
         const jiraIssue = await jiraClient.fetchIssue(this.config.jiraTicket);
-        acceptanceValidation = await validateAcceptanceCriteria(
-          jiraIssue,
-          allIssues,
-          framework,
-          aiProvider,
-        );
-
-        // 9a. Requirement completion tracking
         const fullDiff = [...diffByFile.values()].join("\n");
-        requirementCompletion = await trackRequirementCompletion(
-          jiraIssue,
-          aiProvider,
-          framework,
-          fullDiff || null,
-          sourceByFile.size > 0 ? sourceByFile : null,
-        );
-        if (requirementCompletion.parseWarning) {
-          warnings.push(requirementCompletion.parseWarning);
+        const acSource = this.config.jiraAcSource ?? "both";
+        const explicitAC = jiraIssue.fields.acceptanceCriteria?.trim() || null;
+        const descriptionAC = jiraIssue.fields.description?.trim() || null;
+        const hasAC = acSource === "customField" ? !!explicitAC
+          : acSource === "description" ? !!descriptionAC
+          : !!(explicitAC || descriptionAC);
+
+        if (hasAC) {
+          // Normal flow: validate existing ACs
+          acceptanceValidation = await validateAcceptanceCriteria(
+            jiraIssue,
+            allIssues,
+            framework,
+            aiProvider,
+          );
+
+          // 9a. Requirement completion tracking
+          requirementCompletion = await trackRequirementCompletion(
+            jiraIssue,
+            aiProvider,
+            framework,
+            fullDiff || null,
+            sourceByFile.size > 0 ? sourceByFile : null,
+          );
+          if (requirementCompletion.parseWarning) {
+            warnings.push(requirementCompletion.parseWarning);
+          }
+        } else {
+          // 9c. No ACs found — generate and post to JIRA as a comment
+          console.log(`  No acceptance criteria found for ${this.config.jiraTicket}. Generating suggestions...`);
+
+          const addedLines = (fullDiff.match(/^\+[^+]/gm) || []).length;
+          if (addedLines < 10) {
+            warnings.push(`Skipped AC generation for ${this.config.jiraTicket}: only ${addedLines} lines added (minimum 10)`);
+          } else {
+            let commitMessages: string[] = [];
+            try {
+              const { execSync } = await import("child_process");
+              const gitLog = execSync("git log --oneline -20 --no-decorate", { cwd: repoPath, encoding: "utf-8" });
+              commitMessages = gitLog.trim().split("\n").filter(Boolean);
+            } catch {
+              // Soft fail — commit messages are optional context
+            }
+
+            const epicData = await jiraClient.fetchEpicAndSubtasks(this.config.jiraTicket);
+
+            acGeneration = await generateAcceptanceCriteria(
+              jiraIssue,
+              aiProvider,
+              framework,
+              {
+                diff: fullDiff || null,
+                commitMessages,
+                epicSummary: epicData.epicSummary,
+                subtasks: epicData.subtasks,
+              },
+            );
+            if (acGeneration.parseWarning) {
+              warnings.push(acGeneration.parseWarning);
+            }
+
+            if (acGeneration.criteria.length > 0 && !this.config.dryRun) {
+              try {
+                const commentBody = formatACsForJiraComment(acGeneration, pullRequestId);
+                await jiraClient.addComment(this.config.jiraTicket, commentBody);
+                console.log(`  Posted ${acGeneration.totalCriteria} suggested ACs to ${this.config.jiraTicket}`);
+              } catch (error) {
+                const msg = error instanceof Error ? error.message : "Unknown error";
+                warnings.push(`Failed to post AC suggestions to JIRA: ${msg}`);
+              }
+            }
+          }
         }
 
         // 9b. Test case generation (if requested)
@@ -329,6 +429,7 @@ export class ReviewEngine {
       acceptanceValidation,
       testGeneration,
       requirementCompletion,
+      acGeneration,
       warnings,
     };
 
@@ -438,8 +539,9 @@ function parseDiffByFile(diff: string): Map<string, string> {
 
     const bPath = headerMatch[2];
 
-    // Skip deleted files (b path is /dev/null)
+    // Skip deleted files — detected by b path being /dev/null OR +++ /dev/null in body
     if (bPath === "/dev/null") continue;
+    if (section.includes("\n+++ /dev/null")) continue;
 
     fileMap.set(bPath, `diff --git ${section}`);
   }

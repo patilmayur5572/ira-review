@@ -122,11 +122,12 @@ export class AuthProvider implements vscode.Disposable {
     // Auto-detect from git remote
     try {
       const remoteUrl = await execShell('git remote get-url origin', gitCwd);
-      if (remoteUrl.includes('bitbucket')) {
+      if (remoteUrl.includes('bitbucket') || remoteUrl.includes('/scm/')) {
         scmProvider = 'bitbucket';
       }
-    } catch {
-      // ignore — fall back to settings value
+      console.log(`IRA: Detected SCM=${scmProvider} from remote: ${remoteUrl.slice(0, 80)}`);
+    } catch (err) {
+      console.log(`IRA: Could not detect SCM from git remote (cwd=${gitCwd}): ${err instanceof Error ? err.message : err}`);
     }
 
     let session = await this.getSession(scmProvider);

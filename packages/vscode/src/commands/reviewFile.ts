@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { detectFramework, buildStandalonePrompt, parseStandaloneResponse, createAIProvider, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from 'ira-review';
+import { detectFramework, buildStandalonePrompt, parseStandaloneResponse, resolveIssueLocations, createAIProvider, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from 'ira-review';
 import type { ReviewComment, AIProviderType } from 'ira-review';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { updateStatusBar } from '../providers/statusBarProvider';
@@ -16,7 +16,7 @@ import { setLastResult } from '../extension';
 import { isNoAIProviderError, showAISetupPrompt } from '../services/ollamaSetup';
 import { resolveAiApiKey } from '../utils/credentialPrompts';
 import * as msg from '../utils/messages';
-import * as cp from 'child_process';
+import { execGit } from '../utils/git';
 
 export async function reviewFile(
   context: vscode.ExtensionContext,
@@ -88,7 +88,11 @@ export async function reviewFile(
           rawResponse = result.explanation;
         }
 
-        const issues = parseStandaloneResponse(rawResponse);
+        const rawIssues = parseStandaloneResponse(rawResponse);
+        const resolved = resolveIssueLocations(rawIssues, fileContent);
+        const issues = resolved.filter(
+          (issue) => issue.evidence && issue.evidence.length >= 20
+        );
         const comments: ReviewComment[] = issues.map(issue => ({
           filePath,
           line: issue.line,
@@ -157,13 +161,4 @@ export async function reviewFile(
       }
     },
   );
-}
-
-function execGit(command: string, cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cp.exec(command, { cwd }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout.trim());
-    });
-  });
 }

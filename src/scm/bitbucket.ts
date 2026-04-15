@@ -1,5 +1,5 @@
 import type { BitbucketConfig } from "../types/config.js";
-import type { ReviewComment, SCMProvider } from "../types/review.js";
+import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
 
 export class BitbucketClient implements SCMProvider {
@@ -132,6 +132,23 @@ export class BitbucketClient implements SCMProvider {
     });
   }
 
+  async getPRState(pullRequestId: string): Promise<PRState> {
+    const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}`;
+    const response = await fetchWithTimeout(url, { headers: this.headers });
+    if (response.status === 404) {
+      throw new Error(
+        `PR #${pullRequestId} was not found — it may have been deleted.\n` +
+        `  💡 Double-check the PR number and try again.`,
+      );
+    }
+    if (!response.ok) return "unknown";
+    const data = (await response.json()) as { state: string };
+    const state = data.state?.toUpperCase();
+    if (state === "MERGED") return "merged";
+    if (state === "DECLINED" || state === "SUPERSEDED") return "declined";
+    return "open";
+  }
+
   async getDiff(pullRequestId: string): Promise<string> {
     const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/diff`;
 
@@ -150,6 +167,56 @@ export class BitbucketClient implements SCMProvider {
 
       return response.text();
     });
+  }
+
+  async getDiffPerFile(pullRequestId: string): Promise<Map<string, string>> {
+    const fileMap = new Map<string, string>();
+
+    // Fetch diffstat to get list of changed files
+    let nextUrl: string | null = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/diffstat?pagelen=100`;
+
+    const changedFiles: string[] = [];
+    while (nextUrl) {
+      const data = await withRetry(async () => {
+        const response = await fetchWithTimeout(nextUrl!, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(`Bitbucket API error (${response.status}): ${text}`, response.status);
+        }
+        return response.json() as Promise<{ values: Array<{ new?: { path: string }; old?: { path: string }; status: string }>; next?: string }>;
+      });
+
+      for (const entry of data.values) {
+        if (entry.status === "removed") continue;
+        const path = entry.new?.path ?? entry.old?.path;
+        if (path) changedFiles.push(path);
+      }
+
+      nextUrl = data.next ?? null;
+    }
+
+    // Fetch diff for each file individually
+    for (const filePath of changedFiles) {
+      try {
+        const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+        const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/diff?path=${encodedPath}`;
+        const diff = await withRetry(async () => {
+          const response = await fetchWithTimeout(url, { headers: this.headers }, 15000);
+          if (!response.ok) {
+            const text = await response.text();
+            throw new RetryableError(`Bitbucket API error (${response.status}): ${text}`, response.status);
+          }
+          return response.text();
+        });
+        if (diff.trim()) {
+          fileMap.set(filePath, diff);
+        }
+      } catch {
+        // Soft fail per file — skip files whose diff can't be fetched
+      }
+    }
+
+    return fileMap;
   }
 
   private getSourceHash(pullRequestId: string): Promise<string> {

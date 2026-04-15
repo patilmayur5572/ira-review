@@ -16,11 +16,24 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
     this._onDidChangeCodeLenses.fire();
   }
 
-  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-    const relativePath = vscode.workspace.asRelativePath(document.uri, false);
-    const matching = this._comments.filter(
-      (c) => c.filePath === relativePath || c.filePath === relativePath.replace(/\\/g, '/')
+  removeComment(comment: ReviewComment): void {
+    this._comments = this._comments.filter(
+      (c) => !(c.filePath === comment.filePath && c.line === comment.line && c.rule === comment.rule),
     );
+    this._onDidChangeCodeLenses.fire();
+  }
+
+  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+    const relativePath = vscode.workspace.asRelativePath(document.uri, false).replace(/\\/g, '/');
+    const docPath = document.uri.fsPath;
+    const matching = this._comments.filter((c) => {
+      const fp = c.filePath.replace(/\\/g, '/');
+      if (fp === relativePath) return true;
+      if (relativePath.endsWith(fp)) return true;
+      if (fp.endsWith(relativePath)) return true;
+      if (docPath.endsWith(fp.replace(/\//g, require('path').sep))) return true;
+      return false;
+    });
 
     const lenses: vscode.CodeLens[] = [];
 
@@ -44,6 +57,12 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
       lenses.push(new vscode.CodeLens(range, {
         title: '⭐ Apply Fix',
         command: 'ira.applyFix',
+        arguments: [comment],
+      }));
+
+      lenses.push(new vscode.CodeLens(range, {
+        title: '✕ Dismiss',
+        command: 'ira.dismissIssue',
         arguments: [comment],
       }));
     }

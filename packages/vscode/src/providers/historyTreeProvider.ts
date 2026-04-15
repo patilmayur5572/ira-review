@@ -5,8 +5,6 @@
 
 import * as vscode from 'vscode';
 import { ReviewHistoryStore, type HistoryEntry } from '../services/reviewHistoryStore';
-import { LicenseManager } from '../services/licenseManager';
-
 class HistoryTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
@@ -36,21 +34,6 @@ export class IraHistoryProvider implements vscode.TreeDataProvider<HistoryTreeIt
   async getChildren(element?: HistoryTreeItem): Promise<HistoryTreeItem[]> {
     if (element?.children) return element.children;
     if (element) return [];
-
-    const license = LicenseManager.getInstance();
-    const isPro = await license.isPro();
-
-    if (!isPro) {
-      const upsell = new HistoryTreeItem(
-        '⭐ Upgrade to Pro to view history',
-        vscode.TreeItemCollapsibleState.None,
-      );
-      upsell.command = {
-        command: 'ira.activateLicense',
-        title: 'Activate License',
-      };
-      return [upsell];
-    }
 
     const store = ReviewHistoryStore.getInstance();
     const entries = store.getRecent(50);

@@ -183,6 +183,33 @@ describe("createAIProvider - Ollama", () => {
   });
 });
 
+describe("parseAIResponse", () => {
+  it("preserves object-shaped explanation as JSON string", () => {
+    const content = JSON.stringify({
+      explanation: { criteria: [{ id: "AC-1", given: "a", when: "b", then: "c" }], reviewHints: ["hint"] },
+      impact: "test impact",
+      suggestedFix: "test fix",
+    });
+
+    const result = parseAIResponse(content);
+    // Should JSON.stringify the object, not replace with "No explanation provided."
+    expect(result.explanation).toContain("criteria");
+    expect(result.explanation).toContain("AC-1");
+    expect(result.impact).toBe("test impact");
+  });
+
+  it("falls back to raw content when no explanation field exists", () => {
+    const content = JSON.stringify({
+      criteria: [{ id: "AC-1" }],
+      reviewHints: ["hint"],
+    });
+
+    const result = parseAIResponse(content);
+    // Should use the full content as explanation since no explicit explanation field
+    expect(result.explanation).toContain("criteria");
+  });
+});
+
 describe("createAIProvider - unsupported provider", () => {
   it("throws for unsupported provider", () => {
     expect(() =>

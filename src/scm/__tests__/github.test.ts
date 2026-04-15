@@ -232,4 +232,91 @@ describe("GitHubClient", () => {
       "GitHub API error (403)",
     );
   });
+
+  it("fetches per-file diffs successfully", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          { filename: "src/a.ts", patch: "@@ -1,3 +1,4 @@\n+hello", status: "modified" },
+          { filename: "src/b.ts", patch: "@@ -0,0 +1,2 @@\n+new file", status: "added" },
+        ]),
+    });
+
+    const client = new GitHubClient({
+      token: "gh-tok",
+      owner: "org",
+      repo: "repo",
+    });
+
+    const result = await client.getDiffPerFile("10");
+
+    expect(result.size).toBe(2);
+    expect(result.get("src/a.ts")).toBe(
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,3 +1,4 @@\n+hello",
+    );
+    expect(result.get("src/b.ts")).toBe(
+      "diff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -0,0 +1,2 @@\n+new file",
+    );
+  });
+
+  it("skips removed files and files without patches", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          { filename: "deleted.ts", patch: "@@ -1 +0,0 @@\n-old", status: "removed" },
+          { filename: "binary.png", status: "modified" },
+          { filename: "kept.ts", patch: "@@ -1 +1 @@\n+ok", status: "modified" },
+        ]),
+    });
+
+    const client = new GitHubClient({
+      token: "gh-tok",
+      owner: "org",
+      repo: "repo",
+    });
+
+    const result = await client.getDiffPerFile("11");
+
+    expect(result.size).toBe(1);
+    expect(result.has("deleted.ts")).toBe(false);
+    expect(result.has("binary.png")).toBe(false);
+    expect(result.has("kept.ts")).toBe(true);
+  });
+
+  it("paginates when page has 100 files", async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      filename: `file${i}.ts`,
+      patch: `@@ -0,0 +1 @@\n+line${i}`,
+      status: "added",
+    }));
+    const page2 = [
+      { filename: "file100.ts", patch: "@@ -0,0 +1 @@\n+line100", status: "added" },
+    ];
+
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      const data = callCount === 1 ? page1 : page2;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(data),
+      });
+    });
+
+    const client = new GitHubClient({
+      token: "gh-tok",
+      owner: "org",
+      repo: "repo",
+    });
+
+    const result = await client.getDiffPerFile("12");
+
+    expect(callCount).toBe(2);
+    expect(result.size).toBe(101);
+    expect(result.has("file0.ts")).toBe(true);
+    expect(result.has("file99.ts")).toBe(true);
+    expect(result.has("file100.ts")).toBe(true);
+  });
 });

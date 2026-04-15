@@ -1,34 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import './setup';
-
-// Reproduce detectRepo logic for testing
-function detectRepoFromUrl(url: string): { owner: string; repo: string; baseUrl?: string } {
-  // github.com (SSH or HTTPS)
-  const ghMatch = url.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-  if (ghMatch) {
-    return { owner: ghMatch[1], repo: ghMatch[2] };
-  }
-
-  // Bitbucket Server: https://bitbucket.srv.company.com/scm/PROJECT/repo.git
-  const bbServerMatch = url.match(/https?:\/\/[^/]+\/scm\/([^/]+)\/([^/.]+)/);
-  if (bbServerMatch) {
-    return { owner: bbServerMatch[1], repo: bbServerMatch[2] };
-  }
-
-  // Bitbucket Server SSH: ssh://git@bitbucket.srv.company.com/PROJECT/repo.git
-  const bbSshMatch = url.match(/@[^/]+[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
-  if (bbSshMatch) {
-    return { owner: bbSshMatch[1], repo: bbSshMatch[2] };
-  }
-
-  // GitHub Enterprise: https://ghe.company.com/owner/repo.git
-  const gheMatch = url.match(/https?:\/\/([^/]+)\/([^/]+)\/([^/.]+)/);
-  if (gheMatch) {
-    return { owner: gheMatch[2], repo: gheMatch[3], baseUrl: `https://${gheMatch[1]}/api/v3` };
-  }
-
-  return { owner: '', repo: '' };
-}
+import { detectRepoFromUrl } from '../utils/git';
 
 describe('detectRepo', () => {
   it('detects GitHub HTTPS', () => {

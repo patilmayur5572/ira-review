@@ -1,8 +1,7 @@
 /**
  * IRA — Intelligent Review Assistant
  * Copyright (c) 2024-present Mayur Patil (patilmayur5572@gmail.com)
- * Proprietary License. See LICENSE file for details.
- * Commercial license available — contact patilmayur5572@gmail.com
+ * MIT License. See LICENSE file for details.
  */
 
 import type { JiraIssue, TestFramework, GeneratedTestCase, TestGenerationResult } from "../types/jira.js";
@@ -179,6 +178,32 @@ void shouldDoSomething() {
   }
 }
 
+function tryParseExplanationField(parsed: Record<string, unknown>): GeneratedTestCase[] | null {
+  if (!parsed || typeof parsed !== 'object' || !parsed.explanation) return null;
+  const raw = parsed.explanation;
+
+  // explanation could be an array directly, a string of JSON, or a string with escaped JSON
+  if (Array.isArray(raw)) return mapTestCases(raw);
+
+  if (typeof raw === 'string') {
+    // Try parsing as JSON directly
+    try {
+      const inner = JSON.parse(raw);
+      if (Array.isArray(inner)) return mapTestCases(inner);
+    } catch {
+      // Try extracting a JSON array from the string
+      const arrMatch = raw.match(/\[[\s\S]*\]/);
+      if (arrMatch) {
+        try {
+          const inner = JSON.parse(arrMatch[0]);
+          if (Array.isArray(inner)) return mapTestCases(inner);
+        } catch { /* fall through */ }
+      }
+    }
+  }
+  return null;
+}
+
 function parseTestGenerationResponse(explanation: string): { testCases: GeneratedTestCase[]; parseWarning?: string } {
   // Strip markdown code fences (```json ... ``` or ``` ... ```)
   let cleaned = explanation.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
@@ -189,15 +214,8 @@ function parseTestGenerationResponse(explanation: string): { testCases: Generate
     if (Array.isArray(parsed)) {
       return { testCases: mapTestCases(parsed) };
     }
-    // If the AI returned the wrapper object, extract the explanation field
-    if (parsed && typeof parsed === 'object' && parsed.explanation) {
-      const inner = typeof parsed.explanation === 'string'
-        ? JSON.parse(parsed.explanation)
-        : parsed.explanation;
-      if (Array.isArray(inner)) {
-        return { testCases: mapTestCases(inner) };
-      }
-    }
+    const fromExplanation = tryParseExplanationField(parsed);
+    if (fromExplanation) return { testCases: fromExplanation };
   } catch {
     // Fall through
   }
@@ -220,14 +238,8 @@ function parseTestGenerationResponse(explanation: string): { testCases: Generate
   if (objMatch) {
     try {
       const parsed = JSON.parse(objMatch[0]);
-      if (parsed && typeof parsed === 'object' && parsed.explanation) {
-        const inner = typeof parsed.explanation === 'string'
-          ? JSON.parse(parsed.explanation)
-          : parsed.explanation;
-        if (Array.isArray(inner)) {
-          return { testCases: mapTestCases(inner) };
-        }
-      }
+      const fromExplanation = tryParseExplanationField(parsed);
+      if (fromExplanation) return { testCases: fromExplanation };
     } catch {
       // Fall through
     }

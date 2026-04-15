@@ -29,6 +29,13 @@ export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> 
     this._onDidChangeTreeData.fire();
   }
 
+  removeComment(comment: ReviewComment): void {
+    this._results = this._results.filter(
+      (c) => !(c.filePath === comment.filePath && c.line === comment.line && c.rule === comment.rule),
+    );
+    this._onDidChangeTreeData.fire();
+  }
+
   getTreeItem(element: IraIssueItem): vscode.TreeItem {
     return element;
   }
@@ -59,7 +66,7 @@ export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> 
         const item = new IraIssueItem(truncated, vscode.TreeItemCollapsibleState.None);
         const line = Math.max(0, comment.line - 1);
         const root = this._workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        const uri = vscode.Uri.file(path.join(root, comment.filePath));
+        const uri = resolveFileUri(comment.filePath, root);
         item.command = {
           command: 'vscode.open',
           title: 'Open File',
@@ -81,6 +88,32 @@ export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> 
 
     return fileItems;
   }
+}
+
+function resolveFileUri(filePath: string, workspaceRoot: string): vscode.Uri {
+  const fs = require('fs');
+  const direct = path.join(workspaceRoot, filePath);
+  if (fs.existsSync(direct)) {
+    return vscode.Uri.file(direct);
+  }
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const candidate = path.join(folder.uri.fsPath, filePath);
+    if (fs.existsSync(candidate)) {
+      return vscode.Uri.file(candidate);
+    }
+  }
+  // Suffix matching: try stripping leading path segments
+  const segments = filePath.split('/');
+  for (let i = 1; i < segments.length; i++) {
+    const suffix = segments.slice(i).join('/');
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const candidate = path.join(folder.uri.fsPath, suffix);
+      if (fs.existsSync(candidate)) {
+        return vscode.Uri.file(candidate);
+      }
+    }
+  }
+  return vscode.Uri.file(direct);
 }
 
 function severityIcon(severity: string): string {

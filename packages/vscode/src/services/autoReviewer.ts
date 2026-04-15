@@ -1,10 +1,9 @@
 /**
  * Copyright (c) IRA - Intelligent Review Assistant
- * Auto-Review on Save (Pro Feature)
+ * Auto-Review on Save
  */
 
 import * as vscode from 'vscode';
-import { LicenseManager } from './licenseManager';
 import { AuthProvider } from './authProvider';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
 import { buildStandalonePrompt, parseStandaloneResponse, createAIProvider, detectFramework, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
@@ -14,7 +13,6 @@ import * as msg from '../utils/messages';
 
 let disposable: vscode.Disposable | undefined;
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-let upsellShown = false;
 let suppressAutoReview = false;
 
 /** Suppress the auto-review upsell popup while another command is running. */
@@ -30,16 +28,6 @@ export function activateAutoReview(
     if (suppressAutoReview) return;
     const config = vscode.workspace.getConfiguration('ira');
     if (!config.get<boolean>('autoReviewOnSave')) return;
-
-    const license = LicenseManager.getInstance();
-    const isPro = await license.isPro();
-    if (!isPro) {
-      if (!upsellShown) {
-        upsellShown = true;
-        license.showProUpsell('Auto-review on Save');
-      }
-      return;
-    }
 
     const key = document.uri.toString();
     const existing = debounceTimers.get(key);
