@@ -1,5 +1,5 @@
 import type { BitbucketConfig, GitHubConfig } from "../types/config.js";
-import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
 const IRA_MARKER = "🔍 **IRA Review**";
 const IRA_META_RE = /<!-- ira:file=([^;]+);line=(\d+);rule=([^\s]+) -->/;
@@ -152,7 +152,7 @@ export class CommentTracker {
       if (!response.ok) {
         const body = await response.text();
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${body}`,
+          parseApiError(response.status, body, 'Bitbucket'),
           response.status,
         );
       }
@@ -168,7 +168,7 @@ export class CommentTracker {
       if (!response.ok) {
         const body = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${body}`,
+          parseApiError(response.status, body, 'GitHub'),
           response.status,
         );
       }

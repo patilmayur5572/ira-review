@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { BitbucketClient, GitHubClient, JiraClient, createAIProvider } from 'ira-review';
 import type { BitbucketConfig, GitHubConfig, AIProviderType } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AmpAIProvider, isAmpCliAvailable } from '../providers/ampAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { resolveAiApiKey } from '../utils/credentialPrompts';
 import * as msg from '../utils/messages';
@@ -116,6 +117,14 @@ export async function generatePRDescription(): Promise<void> {
         if (aiProvider === 'copilot') {
           const copilot = new CopilotAIProvider();
           description = await copilot.rawReview(prompt);
+        } else if (aiProvider === 'amp') {
+          if (!isAmpCliAvailable()) {
+            vscode.window.showErrorMessage('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+            return;
+          }
+          const ampMode = config.get<string>('ampMode', 'smart') as 'smart' | 'rush' | 'deep';
+          const amp = new AmpAIProvider(ampMode);
+          description = await amp.rawReview(prompt);
         } else {
           const aiApiKey = await resolveAiApiKey();
           if (!aiApiKey) return;
@@ -201,7 +210,7 @@ async function fetchPRDiff(
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Bitbucket API error (${response.status}): ${text}`);
+      throw new Error(formatApiError(response.status, text, 'Bitbucket'));
     }
 
     const rawText = await response.text();
@@ -218,5 +227,29 @@ async function fetchPRDiff(
     const client = new BitbucketClient({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken, baseUrl: bbUrl } as BitbucketConfig);
     return client.getDiff(prNumber);
   }
+}
+
+function formatApiError(status: number, body: string, provider: string): string {
+  const statusMessages: Record<number, string> = {
+    401: 'Authentication failed — check your token',
+    403: 'Access denied — check your permissions',
+    404: 'Not found — check the PR number or repo',
+    429: 'Rate limited — try again shortly',
+    500: 'Server error — try again in a moment',
+    502: 'Service temporarily unavailable',
+    503: 'Service unavailable — try again shortly',
+  };
+  const friendly = statusMessages[status] ?? `HTTP ${status}`;
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const json = JSON.parse(trimmed);
+      const msg = json.message ?? json.error?.message ?? json.error ?? json.errors?.[0]?.message;
+      if (typeof msg === 'string' && msg.length > 0 && msg.length < 200) return `${provider} (${status}): ${msg}`;
+    } catch { /* fall through */ }
+  }
+  if (trimmed.startsWith('<!') || trimmed.includes('<body')) return `${provider} (${status}): ${friendly}`;
+  if (trimmed.length > 0 && trimmed.length < 150) return `${provider} (${status}): ${trimmed}`;
+  return `${provider} (${status}): ${friendly}`;
 }
 

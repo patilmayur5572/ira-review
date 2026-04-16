@@ -234,6 +234,96 @@ describe('reviewFile', () => {
     expect(vscode.window.showInformationMessage).toHaveBeenCalled();
   });
 
+  it('should not filter out issues without evidence field (v2.0.2 regression)', async () => {
+    (vscode.window as any).activeTextEditor = {
+      document: {
+        uri: { fsPath: '/test/workspace/file.ts', path: 'file.ts' },
+        getText: () => 'const x = 1;',
+      },
+    };
+
+    // Issue with NO evidence — was previously filtered out by the evidence check
+    vi.mocked(parseStandaloneResponse).mockReturnValueOnce([
+      {
+        line: 1,
+        category: 'security',
+        severity: 'MAJOR',
+        message: 'SQL injection risk',
+        explanation: 'exp',
+        impact: 'imp',
+        suggestedFix: 'fix',
+        // evidence is undefined — AI prompt doesn't request it
+      },
+    ] as any);
+    vi.mocked(resolveIssueLocations).mockImplementationOnce((issues: any) => issues);
+
+    await reviewFile(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider);
+
+    // Issue should NOT be dropped — the evidence filter was removed
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('issue'),
+    );
+  });
+
+  it('should not filter out issues with short evidence field (v2.0.2 regression)', async () => {
+    (vscode.window as any).activeTextEditor = {
+      document: {
+        uri: { fsPath: '/test/workspace/file.ts', path: 'file.ts' },
+        getText: () => 'const x = 1;',
+      },
+    };
+
+    // Issue with short evidence (< 20 chars) — was previously filtered out
+    vi.mocked(parseStandaloneResponse).mockReturnValueOnce([
+      {
+        line: 1,
+        category: 'test',
+        severity: 'MAJOR',
+        message: 'unused var',
+        explanation: 'exp',
+        impact: 'imp',
+        suggestedFix: 'fix',
+        evidence: 'short',
+      },
+    ] as any);
+    vi.mocked(resolveIssueLocations).mockImplementationOnce((issues: any) => issues);
+
+    await reviewFile(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('issue'),
+    );
+  });
+
+  it('should call resolveIssueLocations for line resolution (v2.0.2 regression)', async () => {
+    (vscode.window as any).activeTextEditor = {
+      document: {
+        uri: { fsPath: '/test/workspace/file.ts', path: 'file.ts' },
+        getText: () => 'const x = 1;\nconst y = 2;',
+      },
+    };
+
+    const mockIssues = [
+      {
+        line: 1,
+        category: 'test',
+        severity: 'MAJOR',
+        message: 'test issue',
+        explanation: 'exp',
+        impact: 'imp',
+        suggestedFix: 'fix',
+      },
+    ];
+
+    vi.mocked(parseStandaloneResponse).mockReturnValueOnce(mockIssues as any);
+    vi.mocked(resolveIssueLocations).mockReturnValueOnce(mockIssues as any);
+
+    await reviewFile(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider);
+
+    // resolveIssueLocations should be called with the raw issues and file content
+    expect(resolveIssueLocations).toHaveBeenCalledWith(mockIssues, 'const x = 1;\nconst y = 2;');
+  });
+
   it('should handle AI returning issues with out-of-range line numbers', async () => {
     (vscode.window as any).activeTextEditor = {
       document: {

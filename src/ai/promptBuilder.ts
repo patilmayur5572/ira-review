@@ -218,7 +218,7 @@ export function parseStandaloneResponse(content: string): AIFoundIssue[] {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    return [];
+    throw new Error(`Failed to parse AI response as JSON: ${cleaned.slice(0, 200)}`);
   }
 
   // Handle direct array: [{ line, severity, ... }]
@@ -226,7 +226,9 @@ export function parseStandaloneResponse(content: string): AIFoundIssue[] {
     return mapIssues(parsed);
   }
 
-  if (!parsed || typeof parsed !== "object") return [];
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`Unrecognized AI response structure: ${cleaned.slice(0, 200)}`);
+  }
 
   const obj = parsed as Record<string, unknown>;
 
@@ -248,11 +250,11 @@ export function parseStandaloneResponse(content: string): AIFoundIssue[] {
         return mapIssues(inner);
       }
     } catch {
-      // Not valid JSON string
+      throw new Error(`Failed to parse AI explanation field as JSON: ${(obj.explanation as string).slice(0, 200)}`);
     }
   }
 
-  return [];
+  throw new Error(`Unrecognized AI response structure: ${cleaned.slice(0, 200)}`);
 }
 
 function mapIssues(items: unknown[]): AIFoundIssue[] {

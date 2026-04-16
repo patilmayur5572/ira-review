@@ -6,9 +6,10 @@
 import * as vscode from 'vscode';
 import { AuthProvider } from './authProvider';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
-import { buildStandalonePrompt, parseStandaloneResponse, createAIProvider, detectFramework, loadRulesFile, filterRulesByPath, formatRulesForPrompt } from 'ira-review';
+import { buildStandalonePrompt, parseStandaloneResponse, resolveIssueLocations, createAIProvider, detectFramework, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from 'ira-review';
 import type { ReviewComment } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AmpAIProvider } from '../providers/ampAIProvider';
 import * as msg from '../utils/messages';
 
 let disposable: vscode.Disposable | undefined;
@@ -58,13 +59,15 @@ async function runFileReview(
     const config = vscode.workspace.getConfiguration('ira');
     const providerName = config.get<string>('aiProvider') ?? 'copilot';
 
-    const aiProvider = providerName === 'copilot'
-      ? new CopilotAIProvider()
-      : createAIProvider({
-          provider: providerName as 'openai' | 'azure-openai' | 'anthropic' | 'ollama',
-          model: config.get<string>('aiModel') ?? 'gpt-4o-mini',
-          apiKey: await AuthProvider.getInstance().getAiApiKey(),
-        });
+    const aiProvider = providerName === 'amp'
+      ? new AmpAIProvider((config.get<string>('ampMode') ?? 'rush') as 'smart' | 'rush' | 'deep')
+      : providerName === 'copilot'
+        ? new CopilotAIProvider()
+        : createAIProvider({
+            provider: providerName as 'openai' | 'azure-openai' | 'anthropic' | 'ollama',
+            model: config.get<string>('aiModel') ?? 'gpt-4o-mini',
+            apiKey: await AuthProvider.getInstance().getAiApiKey(),
+          });
 
     const content = document.getText();
     const fileName = vscode.workspace.asRelativePath(document.uri);
@@ -81,11 +84,24 @@ async function runFileReview(
     const rules = workspaceRoot ? loadRulesFile(workspaceRoot) : [];
     const filteredRules = filterRulesByPath(rules, fileName);
     const rulesSection = formatRulesForPrompt(filteredRules);
-    const prompt = buildStandalonePrompt(fileName, content, framework, null, rulesSection);
-    const response = await aiProvider.review(prompt);
-    const foundIssues = parseStandaloneResponse(response.explanation);
+    const sensitiveAreas = loadSensitiveAreas(workspaceRoot);
+    const sensitiveMatch = matchSensitiveArea(sensitiveAreas, fileName);
+    const sensitiveContext = sensitiveMatch ? formatSensitiveAreaForPrompt(sensitiveMatch) : undefined;
+    const prompt = buildStandalonePrompt(fileName, content, framework, null, rulesSection, sensitiveContext);
 
-    const comments: ReviewComment[] = foundIssues.map((issue) => ({
+    let rawResponse: string;
+    if (providerName === 'amp') {
+      rawResponse = await (aiProvider as AmpAIProvider).rawReview(prompt);
+    } else if (providerName === 'copilot') {
+      rawResponse = await (aiProvider as CopilotAIProvider).rawReview(prompt);
+    } else {
+      const response = await aiProvider.review(prompt);
+      rawResponse = response.explanation;
+    }
+    const rawIssues = parseStandaloneResponse(rawResponse);
+    const resolved = resolveIssueLocations(rawIssues, content);
+
+    const comments: ReviewComment[] = resolved.map((issue) => ({
       filePath: fileName,
       line: issue.line,
       rule: `IRA/${issue.category}`,

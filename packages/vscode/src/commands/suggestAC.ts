@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { JiraClient, generateAcceptanceCriteria, formatACsForJiraComment, createAIProvider, BitbucketClient } from 'ira-review';
 import type { AIProviderType, BitbucketConfig } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AmpAIProvider, isAmpCliAvailable } from '../providers/ampAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { resolveJiraCredentials, resolveAiApiKey } from '../utils/credentialPrompts';
 import * as msg from '../utils/messages';
@@ -107,7 +108,7 @@ export async function suggestAC(): Promise<void> {
             const resp = await fetch(`${apiBase}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls/${prNumber}`, {
               headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'application/vnd.github.v3.diff' },
             });
-            if (!resp.ok) throw new Error(`GitHub API error (${resp.status}): ${await resp.text()}`);
+            if (!resp.ok) { const text = await resp.text(); throw new Error(formatApiError(resp.status, text, 'GitHub')); }
             diff = await resp.text();
           } else {
             const bbUrl = config.get<string>('bitbucketUrl', '');
@@ -117,7 +118,7 @@ export async function suggestAC(): Promise<void> {
                 `${bbBaseUrl}/rest/api/1.0/projects/${repoInfo.owner}/repos/${repoInfo.repo}/pull-requests/${prNumber}/diff?contextLines=3`,
                 { headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'text/plain' } },
               );
-              if (!resp.ok) throw new Error(`Bitbucket API error (${resp.status}): ${await resp.text()}`);
+              if (!resp.ok) { const text = await resp.text(); throw new Error(formatApiError(resp.status, text, 'Bitbucket')); }
               diff = await resp.text();
             } else {
               const client = new BitbucketClient({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken } as BitbucketConfig);
@@ -162,7 +163,20 @@ export async function suggestAC(): Promise<void> {
         // Step 9: Build AI provider and generate ACs
         const aiProviderName = config.get<string>('aiProvider', 'copilot');
         let aiProvider;
-        if (aiProviderName === 'copilot') {
+        if (aiProviderName === 'amp') {
+          if (!isAmpCliAvailable()) {
+            vscode.window.showErrorMessage('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+            return;
+          }
+          const ampMode = config.get<string>('ampMode', 'deep') as 'smart' | 'rush' | 'deep';
+          aiProvider = {
+            review: async (prompt: string) => {
+              const amp = new AmpAIProvider(ampMode);
+              const raw = await amp.rawReview(prompt);
+              return { explanation: raw, impact: '', suggestedFix: '' };
+            },
+          };
+        } else if (aiProviderName === 'copilot') {
           aiProvider = {
             review: async (prompt: string) => {
               const copilot = new CopilotAIProvider();
@@ -203,6 +217,30 @@ export async function suggestAC(): Promise<void> {
       }
     },
   );
+}
+
+function formatApiError(status: number, body: string, provider: string): string {
+  const statusMessages: Record<number, string> = {
+    401: 'Authentication failed — check your token',
+    403: 'Access denied — check your permissions',
+    404: 'Not found — check the PR number or repo',
+    429: 'Rate limited — try again shortly',
+    500: 'Server error — try again in a moment',
+    502: 'Service temporarily unavailable',
+    503: 'Service unavailable — try again shortly',
+  };
+  const friendly = statusMessages[status] ?? `HTTP ${status}`;
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const json = JSON.parse(trimmed);
+      const msg = json.message ?? json.error?.message ?? json.error ?? json.errors?.[0]?.message;
+      if (typeof msg === 'string' && msg.length > 0 && msg.length < 200) return `${provider} (${status}): ${msg}`;
+    } catch { /* fall through */ }
+  }
+  if (trimmed.startsWith('<!') || trimmed.includes('<body')) return `${provider} (${status}): ${friendly}`;
+  if (trimmed.length > 0 && trimmed.length < 150) return `${provider} (${status}): ${trimmed}`;
+  return `${provider} (${status}): ${friendly}`;
 }
 
 function buildACMarkdown(result: import('ira-review').ACGenerationResult): string {

@@ -1,6 +1,6 @@
 import type { SonarConfig } from "../types/config.js";
 import type { SonarIssue, SonarSearchResponse } from "../types/sonar.js";
-import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
 export class SonarClient {
   private readonly baseUrl: string;
@@ -52,7 +52,7 @@ export class SonarClient {
       if (!response.ok) {
         const body = await response.text();
         throw new RetryableError(
-          `Sonar API error (${response.status}): ${body}`,
+          parseApiError(response.status, body, 'Sonar'),
           response.status,
         );
       }

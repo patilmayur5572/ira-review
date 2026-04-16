@@ -198,7 +198,7 @@ export function couldNotOpenFile(filePath: string): string {
 
 export const progress = {
   reviewFile: 'Reviewing file…',
-  reviewPR: 'Scanning PR for issues…',
+  reviewPR: 'IRA Review',
   generateTests: (framework: string) => `Generating ${framework} test cases…`,
   calculateRisk: 'Calculating risk score…',
   validateAC: (key: string) => `Checking ${key} acceptance criteria…`,
@@ -207,6 +207,38 @@ export const progress = {
   autoReview: '$(sync~spin) Auto-reviewing…',
   generatingFix: '$(sync~spin) Generating fix…',
   pullingModel: (model: string) => `Pulling ${model}… this may take a few minutes`,
+};
+
+// ─── Step-based Progress Messages ───────────────────────────
+
+export const steps = {
+  // reviewPR steps
+  prStarting: 'Getting everything ready…',
+  prAuthenticated: 'Authenticated — fetching your code changes…',
+  prDiffLoaded: (fileCount: number) => `Found ${fileCount} changed file${fileCount !== 1 ? 's' : ''} — AI is reviewing your code…`,
+  prFileReview: (fileName: string, current: number, total: number) => `Reviewing ${fileName} (${current}/${total})…`,
+  prHighlighting: 'Review complete — highlighting issues for you…',
+  prNotifying: 'Sending team notifications…',
+
+  // reviewFile steps
+  fileDetecting: 'Detecting project context…',
+  fileReviewing: 'AI is reviewing your code…',
+
+  // validateAC steps
+  acFetchingTicket: 'Loading JIRA ticket…',
+  acFetchingDiff: 'Fetching code changes…',
+  acValidating: 'AI is validating acceptance criteria…',
+  acPosting: (prNum: string) => `Posting results to PR #${prNum}…`,
+
+  // suggestAC steps
+  acTicketLoaded: 'Ticket loaded — reading your code changes…',
+  acGathered: 'Gathered context — generating acceptance criteria…',
+  acPostingToJira: 'ACs ready — posting to JIRA…',
+  acOpening: 'Posted — opening preview…',
+
+  // local diff steps
+  localReadingDiff: 'Reading your local changes…',
+  localReviewingFiles: (fileCount: number) => `Reviewing ${fileCount} changed file${fileCount !== 1 ? 's' : ''} — this won't take long…`,
 };
 
 // ─── Prompts ────────────────────────────────────────────────

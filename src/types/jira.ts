@@ -33,7 +33,7 @@ export type TestFramework = "jest" | "vitest" | "mocha" | "playwright" | "cypres
 
 export interface GeneratedTestCase {
   description: string;
-  type: "happy-path" | "edge-case" | "negative";
+  type: "happy-path" | "negative" | "boundary-value" | "authorization" | "integration" | "state-workflow" | "data-integrity" | "error-recovery" | "not-testable";
   criterion: string;
   code: string;
 }

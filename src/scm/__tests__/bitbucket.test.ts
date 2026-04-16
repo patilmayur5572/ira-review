@@ -124,7 +124,7 @@ describe("BitbucketClient", () => {
     });
 
     await expect(client.postComment(mockComment, "1")).rejects.toThrow(
-      "Bitbucket API error (403)",
+      "Bitbucket (403)",
     );
   });
 

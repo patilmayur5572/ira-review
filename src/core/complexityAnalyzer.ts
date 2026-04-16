@@ -1,6 +1,6 @@
 import type { SonarConfig } from "../types/config.js";
 import type { ComplexityReport, ComplexityMetric } from "../types/risk.js";
-import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
 const COMPLEXITY_THRESHOLD = 15;
 
@@ -85,7 +85,7 @@ export class ComplexityAnalyzer {
         if (!response.ok) {
           const body = await response.text();
           throw new RetryableError(
-            `Sonar Measures API error (${response.status}): ${body}`,
+            parseApiError(response.status, body, 'Sonar'),
             response.status,
           );
         }

@@ -66,6 +66,8 @@ vi.mock('../providers/copilotAIProvider', () => {
 // Mock extension
 vi.mock('../extension', () => ({
   setLastResult: vi.fn(),
+  setPRContext: vi.fn(),
+  getPRContext: vi.fn(() => null),
 }));
 
 // Mock reviewHistoryStore
@@ -379,6 +381,163 @@ describe('reviewPR', () => {
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       expect.stringContaining('No code changes found'),
     );
+  });
+
+  it('should use msg.progress.reviewPR as progress title, not hardcoded string (v2.0.2 regression)', async () => {
+    // Restore parseStandaloneResponse
+    const iraReview = await import('ira-review');
+    (iraReview.parseStandaloneResponse as any).mockImplementation(() => []);
+
+    const cp = await import('child_process');
+    (cp.execFile as any).mockImplementation((cmd: string, args: string[], opts: any, cb: Function) => {
+      const fullCmd = [cmd, ...args].join(' ');
+      if (fullCmd.includes('rev-parse --show-toplevel')) {
+        cb(null, '/test/workspace');
+      } else if (fullCmd.includes('branch --show-current')) {
+        cb(null, 'feature/PROJ-123');
+      } else if (fullCmd.includes('status --porcelain')) {
+        cb(null, 'M file.ts');
+      } else if (fullCmd.includes('remote get-url')) {
+        cb(null, 'https://github.com/owner/repo.git');
+      } else if (fullCmd.includes('symbolic-ref')) {
+        cb(new Error('not a symbolic ref'), '');
+      } else if (fullCmd.includes('rev-parse --verify')) {
+        cb(null, 'develop');
+      } else if (fullCmd.includes('diff HEAD')) {
+        cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+      } else if (fullCmd.includes('diff')) {
+        cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+      } else {
+        cb(null, '');
+      }
+    });
+
+    (vscode.window.showQuickPick as any).mockResolvedValue({ label: '$(git-branch) No PR yet (review local changes)', id: 'local' });
+    (vscode.workspace.getConfiguration as any).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'aiProvider') return 'copilot';
+        return '';
+      }),
+    });
+
+    await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
+
+    // withProgress should be called with the centralized progress title
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'IRA Review' }),
+      expect.any(Function),
+    );
+  });
+
+  it('should not filter out issues without evidence in local diff mode (v2.0.2 regression)', async () => {
+    const iraReview = await import('ira-review');
+    // Issue with no evidence field
+    (iraReview.parseStandaloneResponse as any).mockImplementation(() => [
+      {
+        line: 2,
+        category: 'security',
+        severity: 'MAJOR',
+        message: 'SQL injection',
+        explanation: 'exp',
+        impact: 'imp',
+        suggestedFix: 'fix',
+        // no evidence field
+      },
+    ]);
+    (iraReview.resolveIssueLocations as any).mockImplementation((issues: any) => issues);
+
+    const cp = await import('child_process');
+    (cp.execFile as any).mockImplementation((cmd: string, args: string[], opts: any, cb: Function) => {
+      const fullCmd = [cmd, ...args].join(' ');
+      if (fullCmd.includes('rev-parse --show-toplevel')) {
+        cb(null, '/test/workspace');
+      } else if (fullCmd.includes('branch --show-current')) {
+        cb(null, 'feature/PROJ-123');
+      } else if (fullCmd.includes('status --porcelain')) {
+        cb(null, 'M file.ts');
+      } else if (fullCmd.includes('remote get-url')) {
+        cb(null, 'https://github.com/owner/repo.git');
+      } else if (fullCmd.includes('symbolic-ref')) {
+        cb(new Error('not a symbolic ref'), '');
+      } else if (fullCmd.includes('rev-parse --verify')) {
+        cb(null, 'develop');
+      } else if (fullCmd.includes('diff HEAD')) {
+        cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+      } else if (fullCmd.includes('diff')) {
+        cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+      } else {
+        cb(null, '');
+      }
+    });
+
+    (vscode.window.showQuickPick as any).mockResolvedValue({ label: '$(git-branch) No PR yet (review local changes)', id: 'local' });
+    (vscode.workspace.getConfiguration as any).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'aiProvider') return 'copilot';
+        return '';
+      }),
+    });
+
+    await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
+
+    // Issue count should be 1, not 0 — evidence filter was removed
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('1 issue'),
+    );
+  });
+
+  it('should call resolveIssueLocations in local diff mode (v2.0.2 regression)', async () => {
+    const iraReview = await import('ira-review');
+    const mockIssues = [
+      {
+        line: 2,
+        category: 'test',
+        severity: 'MAJOR',
+        message: 'test issue',
+        explanation: 'exp',
+        impact: 'imp',
+        suggestedFix: 'fix',
+      },
+    ];
+    (iraReview.parseStandaloneResponse as any).mockImplementation(() => mockIssues);
+    (iraReview.resolveIssueLocations as any).mockImplementation((issues: any) => issues);
+
+    const cp = await import('child_process');
+    (cp.execFile as any).mockImplementation((cmd: string, args: string[], opts: any, cb: Function) => {
+      const fullCmd = [cmd, ...args].join(' ');
+      if (fullCmd.includes('rev-parse --show-toplevel')) {
+        cb(null, '/test/workspace');
+      } else if (fullCmd.includes('branch --show-current')) {
+        cb(null, 'feature/PROJ-123');
+      } else if (fullCmd.includes('status --porcelain')) {
+        cb(null, 'M file.ts');
+      } else if (fullCmd.includes('remote get-url')) {
+        cb(null, 'https://github.com/owner/repo.git');
+      } else if (fullCmd.includes('symbolic-ref')) {
+        cb(new Error('not a symbolic ref'), '');
+      } else if (fullCmd.includes('rev-parse --verify')) {
+        cb(null, 'develop');
+      } else if (fullCmd.includes('diff HEAD')) {
+        cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+      } else if (fullCmd.includes('diff')) {
+        cb(null, 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n line1\n+added line\n line2\n line3');
+      } else {
+        cb(null, '');
+      }
+    });
+
+    (vscode.window.showQuickPick as any).mockResolvedValue({ label: '$(git-branch) No PR yet (review local changes)', id: 'local' });
+    (vscode.workspace.getConfiguration as any).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'aiProvider') return 'copilot';
+        return '';
+      }),
+    });
+
+    await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
+
+    // resolveIssueLocations should be called for each file in the diff
+    expect(iraReview.resolveIssueLocations).toHaveBeenCalled();
   });
 
   it('should handle non-copilot AI provider in local mode', async () => {

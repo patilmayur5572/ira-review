@@ -124,6 +124,57 @@ export async function fetchWithTimeout(
   }
 }
 
+/**
+ * Extract a clean, user-friendly error message from an HTTP API error response body.
+ * Handles JSON error objects, HTML pages, and raw text gracefully.
+ */
+export function parseApiError(status: number, body: string, provider: string): string {
+  // Common HTTP status messages
+  const statusMessages: Record<number, string> = {
+    400: 'Bad request',
+    401: 'Authentication failed — check your token or credentials',
+    403: 'Access denied — you may not have permission for this resource',
+    404: 'Not found — check the URL, project key, or PR number',
+    408: 'Request timed out — try again in a moment',
+    409: 'Conflict — the resource may have been modified',
+    422: 'Invalid request — the server couldn\'t process it',
+    429: 'Rate limited — too many requests, try again shortly',
+    500: 'Server error — the service is having issues',
+    502: 'Bad gateway — the service is temporarily unavailable',
+    503: 'Service unavailable — try again in a moment',
+    504: 'Gateway timeout — the service took too long to respond',
+  };
+
+  const friendlyStatus = statusMessages[status] ?? `HTTP ${status}`;
+
+  // Try to extract a message from JSON response
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const json = JSON.parse(trimmed);
+      const msg = json.message ?? json.error?.message ?? json.error ?? json.errors?.[0]?.message ?? json.detail;
+      if (typeof msg === 'string' && msg.length > 0 && msg.length < 200) {
+        return `${provider} (${status}): ${msg}`;
+      }
+    } catch {
+      // Not valid JSON — fall through
+    }
+  }
+
+  // If body is HTML (error page), discard it
+  if (trimmed.startsWith('<!') || trimmed.startsWith('<html') || trimmed.includes('<body')) {
+    return `${provider} (${status}): ${friendlyStatus}`;
+  }
+
+  // If body is short enough, use it directly
+  if (trimmed.length > 0 && trimmed.length < 150) {
+    return `${provider} (${status}): ${trimmed}`;
+  }
+
+  // Fallback to friendly status message
+  return `${provider} (${status}): ${friendlyStatus}`;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

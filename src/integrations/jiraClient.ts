@@ -1,6 +1,6 @@
 import type { JiraConfig } from "../types/config.js";
 import type { JiraIssue } from "../types/jira.js";
-import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
 export class JiraClient {
   private readonly baseUrl: string;
@@ -65,7 +65,7 @@ export class JiraClient {
       if (!response.ok) {
         const body = await response.text();
         throw new RetryableError(
-          `JIRA API error (${response.status}): ${body}`,
+          parseApiError(response.status, body, 'JIRA'),
           response.status,
         );
       }
@@ -107,7 +107,7 @@ export class JiraClient {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `JIRA API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'JIRA'),
           response.status,
         );
       }

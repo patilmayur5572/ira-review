@@ -11,6 +11,7 @@ import { updateStatusBar } from '../providers/statusBarProvider';
 import { IraIssuesProvider } from '../providers/treeViewProvider';
 import { IraCodeLensProvider } from '../providers/codeLensProvider';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AmpAIProvider, isAmpCliAvailable } from '../providers/ampAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { setLastResult } from '../extension';
 import { isNoAIProviderError, showAISetupPrompt } from '../services/ollamaSetup';
@@ -42,8 +43,9 @@ export async function reviewFile(
 
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: msg.progress.reviewFile, cancellable: false },
-    async () => {
+    async (progress) => {
       try {
+        progress.report({ message: msg.steps.fileDetecting });
         const config = vscode.workspace.getConfiguration('ira');
         const activeFileDir = vscode.window.activeTextEditor?.document.uri.fsPath
           ? require('path').dirname(vscode.window.activeTextEditor.document.uri.fsPath)
@@ -70,10 +72,21 @@ export async function reviewFile(
         const sensitiveContext = sensitiveMatch ? formatSensitiveAreaForPrompt(sensitiveMatch) : undefined;
         const prompt = buildStandalonePrompt(filePath, fileContent, framework, null, rulesSection, sensitiveContext);
 
+        progress.report({ message: msg.steps.fileReviewing });
         const aiProvider = config.get<string>('aiProvider', 'copilot');
         let rawResponse: string;
 
-        if (aiProvider === 'copilot') {
+        if (aiProvider === 'amp') {
+          if (!isAmpCliAvailable()) {
+            vscode.window.showErrorMessage('AMP CLI not found — install it from ampcode.com/install and run `amp login`', 'Install AMP').then(action => {
+              if (action === 'Install AMP') vscode.env.openExternal(vscode.Uri.parse('https://ampcode.com/install'));
+            });
+            return;
+          }
+          const ampMode = config.get<string>('ampMode', 'smart') as 'smart' | 'rush' | 'deep';
+          const amp = new AmpAIProvider(ampMode);
+          rawResponse = await amp.rawReview(prompt);
+        } else if (aiProvider === 'copilot') {
           const copilot = new CopilotAIProvider();
           rawResponse = await copilot.rawReview(prompt);
         } else {
@@ -90,10 +103,7 @@ export async function reviewFile(
 
         const rawIssues = parseStandaloneResponse(rawResponse);
         const resolved = resolveIssueLocations(rawIssues, fileContent);
-        const issues = resolved.filter(
-          (issue) => issue.evidence && issue.evidence.length >= 20
-        );
-        const comments: ReviewComment[] = issues.map(issue => ({
+        const comments: ReviewComment[] = resolved.map(issue => ({
           filePath,
           line: issue.line,
           rule: `IRA/${issue.category}`,

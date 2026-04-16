@@ -232,11 +232,7 @@ export class ReviewEngine {
             // Resolve line numbers from AI snippets against actual diff content
             const foundIssues = resolveIssueLocations(rawIssues, annotatedDiff);
 
-            const verifiedIssues = foundIssues.filter(
-              (issue) => issue.evidence && issue.evidence.length >= 20
-            );
-
-            return verifiedIssues.map((issue: AIFoundIssue) => ({
+            return foundIssues.map((issue: AIFoundIssue) => ({
               filePath,
               line: issue.line,
               rule: `IRA/${issue.category}`,
