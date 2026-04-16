@@ -54,7 +54,7 @@ export async function generateTestCases(
     testFramework,
     testCases,
     totalCases: testCases.length,
-    edgeCases: testCases.filter((t) => t.type === "edge-case" || t.type === "negative").length,
+    edgeCases: testCases.filter((t) => t.type !== "happy-path" && t.type !== "not-testable").length,
     ...(parseWarning && { parseWarning }),
   };
 }
@@ -102,10 +102,28 @@ ${frameworkCtx}
 Test framework: **${testFramework}**
 ${diffSection}${sourceSection}
 ## Instructions
-Generate test cases for EACH acceptance criterion. For each criterion, produce:
-1. At least one **happy-path** test (the expected behavior works)
-2. At least one **edge-case** test (boundary conditions, empty inputs, concurrent actions)
-3. At least one **negative** test (invalid inputs, unauthorized access, error scenarios)
+Evaluate EACH acceptance criterion and generate appropriate test cases. Use these test types:
+
+1. **happy-path** — The expected behavior works as designed
+2. **negative** — Invalid inputs, unauthorized access, error scenarios that should be rejected
+3. **boundary-value** — Min/max limits, zero, empty, null, off-by-one, exact thresholds
+4. **authorization** — Role-based access, permission checks, token expiry, privilege escalation
+5. **integration** — API contracts, service-to-service calls, database round-trips, external dependencies
+6. **state-workflow** — Multi-step flows, state transitions, out-of-order operations, idempotency
+7. **data-integrity** — Consistency after writes, partial failure handling, constraint validation, duplicate prevention
+8. **error-recovery** — System behavior after failures: retry, rollback, graceful degradation, circuit breaker
+
+### CRITICAL: Handling untestable acceptance criteria
+If an acceptance criterion is NOT testable (too vague, subjective, non-functional without measurable thresholds, or purely cosmetic), you MUST still include an entry for it with:
+- type: "not-testable"
+- The "code" field MUST contain a comment block explaining WHY it's not testable and what would make it testable. Example:
+  "code": "// NOT TESTABLE: This AC ('UI should be user-friendly') is subjective and lacks measurable criteria.\n// REASON: 'User-friendly' has no objective definition — different users have different expectations.\n// RECOMMENDATION: Redefine as measurable criteria, e.g., 'Task completion within 3 clicks' or 'Page load under 2 seconds'.\n// IMPACT: Without testable criteria, this AC cannot be validated and may escape QA."
+
+DO NOT silently skip any acceptance criterion. Every AC must produce at least one test case OR one not-testable entry.
+
+For each TESTABLE criterion, generate at minimum:
+- One **happy-path** test
+- One or more tests from the other applicable types (not every type applies to every AC — use your judgment as a senior tester)
 
 ${frameworkExamples}
 
@@ -117,7 +135,7 @@ Respond with ONLY a valid JSON object:
 }
 
 The "explanation" field MUST be a JSON-encoded array of test cases.
-Each test case needs: description (string), type ("happy-path" | "edge-case" | "negative"), criterion (string - which AC it validates), code (string - the actual test code).
+Each test case needs: description (string), type ("happy-path" | "negative" | "boundary-value" | "authorization" | "integration" | "state-workflow" | "data-integrity" | "error-recovery" | "not-testable"), criterion (string - which AC it validates), code (string - the actual test code, or a comment block for not-testable).
 
 ${diffContext || sourceFiles ? "Use actual function names, API routes, and data shapes from the code provided." : "Generate descriptive test scaffolding. Use placeholder function/route names that the developer can fill in."}
 
@@ -271,9 +289,16 @@ function mapTestCases(items: unknown[]): GeneratedTestCase[] {
     }));
 }
 
+const VALID_TEST_TYPES: GeneratedTestCase["type"][] = [
+  "happy-path", "negative", "boundary-value", "authorization", "integration",
+  "state-workflow", "data-integrity", "error-recovery", "not-testable",
+];
+
 function validateTestType(value: unknown): GeneratedTestCase["type"] {
-  if (typeof value === "string" && ["happy-path", "edge-case", "negative"].includes(value)) {
+  if (typeof value === "string" && VALID_TEST_TYPES.includes(value as GeneratedTestCase["type"])) {
     return value as GeneratedTestCase["type"];
   }
+  // Backward compatibility: map old "edge-case" to "boundary-value"
+  if (value === "edge-case") return "boundary-value";
   return "happy-path";
 }

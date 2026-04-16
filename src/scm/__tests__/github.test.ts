@@ -229,7 +229,7 @@ describe("GitHubClient", () => {
     });
 
     await expect(client.postSummary("test", "1")).rejects.toThrow(
-      "GitHub API error (403)",
+      "GitHub (403)",
     );
   });
 

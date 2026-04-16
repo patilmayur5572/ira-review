@@ -1,6 +1,6 @@
 import type { GitHubConfig } from "../types/config.js";
 import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
-import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
 export class GitHubClient implements SCMProvider {
   private readonly baseUrl: string;
@@ -57,7 +57,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }
@@ -94,7 +94,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }
@@ -113,7 +113,7 @@ export class GitHubClient implements SCMProvider {
         const response = await fetchWithTimeout(url, { headers: this.headers });
         if (!response.ok) {
           const text = await response.text();
-          throw new RetryableError(`GitHub API error (${response.status}): ${text}`, response.status);
+          throw new RetryableError(parseApiError(response.status, text, 'GitHub'), response.status);
         }
         return response.json() as Promise<Array<{ filename: string; patch?: string; status: string }>>;
       });
@@ -147,7 +147,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }
@@ -184,7 +184,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }
@@ -207,7 +207,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }
@@ -228,7 +228,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }
@@ -273,7 +273,7 @@ export class GitHubClient implements SCMProvider {
         if (!response.ok && response.status !== 422) {
           const text = await response.text();
           throw new RetryableError(
-            `GitHub API error (${response.status}): ${text}`,
+            parseApiError(response.status, text, 'GitHub'),
             response.status,
           );
         }
@@ -318,7 +318,7 @@ export class GitHubClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `GitHub API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'GitHub'),
           response.status,
         );
       }

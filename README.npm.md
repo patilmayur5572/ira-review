@@ -15,55 +15,19 @@ No install required. Drop `--dry-run` to post comments directly on the PR. For B
 ## What You Get
 
 ```
-🔍 IRA — Scanning PR before your reviewers do
+IRA: Found 3 issues (Risk: MEDIUM - 47/100)
 
-  ✓ Config loaded — AI-only mode, openai, PR #42
-  ✓ Diff loaded — 4 files changed
-  ✓ Review complete — 3 issues found
+src/routes/todos.ts
+  [BLOCKER] SQL injection risk - user input passed directly to query
+  [MAJOR]   Missing database index on frequently queried column
 
-────────────────────────────────────────────────────────────
-📄 src/routes/auth.ts:31
-   Rule:     IRA/security (CRITICAL)
-   Message:  User input passed directly to SQL query
-   Explain:  The username parameter is concatenated into a SQL string,
-             creating a SQL injection vector.
-   Impact:   Attacker could execute arbitrary SQL and gain database control.
-   Fix:      BEFORE: `db.query(`SELECT * FROM users WHERE name = ${username}`)`
-             → AFTER: `db.query('SELECT * FROM users WHERE name = $1', [username])`
+src/middleware/auth.ts
+  [CRITICAL] JWT secret hardcoded - move to environment variable
 
-────────────────────────────────────────────────────────────
-📄 src/middleware/cors.ts:8
-   Rule:     IRA/error-handling (MAJOR)
-   Message:  Empty catch block swallows CORS validation errors
-   Explain:  fetch() failure in CORS preflight is caught and ignored,
-             leaving the request in an undefined state.
-   Impact:   Silent CORS failures in production with no logging.
-   Fix:      BEFORE: `} catch {}`
-             → AFTER: `} catch (err) { logger.error('CORS preflight failed', err); throw err; }`
-
-# 🔍 IRA Review Summary
-
-## 🟡 Risk: MEDIUM (38/100)
-
-| Metric        | Value    |
-|---------------|----------|
-| Review mode   | AI-only  |
-| Total issues  | 3        |
-| Reviewed (AI) | 3        |
-| Framework     | react    |
-
-## ✅ Requirements: AUTH-234 — 83% Complete (5/6)
-
-  ✅ OAuth2 login flow implemented with Google provider
-  ✅ JWT tokens generated on successful authentication
-  ✅ Refresh token rotation with 7-day expiry
-  ❌ Input validation on login endpoint — no email format check
-  ✅ Logout endpoint clears session and revokes token
-  ✅ Rate limiting on login attempts
-
-  ⚠️ Edge Cases Not Covered
-  - What happens when Google OAuth is unreachable?
-  - Token refresh during concurrent requests?
+JIRA AC Validation (PROJ-1234):
+  AC 1: User can create a todo item        COVERED
+  AC 2: Input is validated before save      NOT COVERED
+  AC 3: Error returns 422 with details      COVERED
 ```
 
 Each issue is posted as an inline comment on the exact PR line with explanation, impact, and a minimal BEFORE → AFTER fix.

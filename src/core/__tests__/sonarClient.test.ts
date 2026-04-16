@@ -127,7 +127,7 @@ describe("SonarClient", () => {
     });
 
     await expect(client.fetchPullRequestIssues("1")).rejects.toThrow(
-      "Sonar API error (401)",
+      "Sonar (401)",
     );
   });
 });

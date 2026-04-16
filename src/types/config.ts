@@ -20,7 +20,7 @@ export interface GitHubConfig {
   baseUrl?: string;
 }
 
-export type AIProviderType = "openai" | "azure-openai" | "anthropic" | "ollama";
+export type AIProviderType = "openai" | "azure-openai" | "anthropic" | "ollama" | "amp";
 
 export interface AIConfig {
   provider: AIProviderType;

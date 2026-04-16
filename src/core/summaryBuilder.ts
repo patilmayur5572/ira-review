@@ -127,7 +127,12 @@ export function buildSummary(result: ReviewResult): string {
   // Generated test cases
   if (result.testGeneration && result.testGeneration.testCases.length > 0) {
     const tg = result.testGeneration;
-    lines.push(`## 🧪 Generated Test Cases (${tg.totalCases} tests, ${tg.edgeCases} edge cases)`);
+    const notTestableCount = tg.testCases.filter(tc => tc.type === "not-testable").length;
+    const testableCount = tg.totalCases - notTestableCount;
+    const headerParts = [`${testableCount} test${testableCount !== 1 ? "s" : ""}`];
+    if (tg.edgeCases > 0) headerParts.push(`${tg.edgeCases} advanced cases`);
+    if (notTestableCount > 0) headerParts.push(`${notTestableCount} not-testable`);
+    lines.push(`## 🧪 Generated Test Cases (${headerParts.join(", ")})`);
     lines.push("");
     const byCriterion = new Map<string, typeof tg.testCases>();
     for (const tc of tg.testCases) {
@@ -138,7 +143,12 @@ export function buildSummary(result: ReviewResult): string {
     for (const [criterion, cases] of byCriterion) {
       lines.push(`### ${criterion}`);
       for (const tc of cases) {
-        const typeIcon = tc.type === "happy-path" ? "✅" : tc.type === "edge-case" ? "⚠️" : "🚫";
+        const typeIcons: Record<string, string> = {
+          "happy-path": "✅", "negative": "❌", "boundary-value": "🔲",
+          "authorization": "🔑", "integration": "🔗", "state-workflow": "🔄",
+          "data-integrity": "📊", "error-recovery": "🛡️", "not-testable": "⏭️",
+        };
+        const typeIcon = typeIcons[tc.type] ?? "✅";
         lines.push(`- ${typeIcon} ${tc.description} *(${tc.type})*`);
       }
       lines.push("");

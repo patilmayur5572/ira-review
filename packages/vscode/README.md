@@ -202,28 +202,6 @@ All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux
 
 ---
 
-## Free vs Pro
-
-| Feature | Free | Pro ($10/mo) |
-|---|:---:|:---:|
-| PR Reviews + File Reviews | Yes | Yes |
-| Copilot AI (zero config) | Yes | Yes |
-| OpenAI / Anthropic / Ollama | Yes | Yes |
-| Inline Diagnostics + CodeLens | Yes | Yes |
-| TreeView + Risk Score | Yes | Yes |
-| Custom Review Rules | Yes | Yes |
-| SonarQube Integration | Yes | Yes |
-| JIRA AC Validation | Yes | Yes |
-| Test Case Generation | Yes | Yes |
-| PR Description Generation | Yes | Yes |
-| Slack / Teams Notifications | Yes | Yes |
-| Comment Deduplication | Yes | Yes |
-| Auto-review on Save | - | Yes |
-| One-click Apply Fix | - | Yes |
-| Review History + Trends | - | Yes |
-
----
-
 ## Links
 
 - [npm package](https://www.npmjs.com/package/ira-review) (CLI + CI integration)

@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -141,10 +141,11 @@
             "openai",
             "azure-openai",
             "anthropic",
-            "ollama"
+            "ollama",
+            "amp"
           ],
           "default": "copilot",
-          "description": "AI provider for code reviews (copilot = use your existing GitHub Copilot, no API key needed)"
+          "description": "AI provider for code reviews (copilot = GitHub Copilot, amp = AMP CLI, or bring your own API key)"
         },
         "ira.aiModel": {
           "type": "string",
@@ -157,6 +158,16 @@
           "description": "API key for the AI provider",
           "scope": "application",
           "order": 1
+        },
+        "ira.ampMode": {
+          "type": "string",
+          "enum": [
+            "smart",
+            "rush",
+            "deep"
+          ],
+          "default": "smart",
+          "description": "AMP agent mode — smart (best quality), rush (faster/cheaper), deep (complex reasoning)"
         },
         "ira.minSeverity": {
           "type": "string",

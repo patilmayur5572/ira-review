@@ -1,6 +1,6 @@
 import type { BitbucketConfig } from "../types/config.js";
 import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
-import { withRetry, fetchWithTimeout, RetryableError } from "../utils/retry.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
 export class BitbucketClient implements SCMProvider {
   private readonly baseUrl: string;
@@ -63,7 +63,7 @@ export class BitbucketClient implements SCMProvider {
           if (!retryResponse.ok) {
             const retryText = await retryResponse.text();
             throw new RetryableError(
-              `Bitbucket API error (${retryResponse.status}): ${retryText}`,
+              parseApiError(retryResponse.status, retryText, 'Bitbucket'),
               retryResponse.status,
             );
           }
@@ -71,7 +71,7 @@ export class BitbucketClient implements SCMProvider {
         }
 
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'Bitbucket'),
           response.status,
         );
       }
@@ -98,7 +98,7 @@ export class BitbucketClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'Bitbucket'),
           response.status,
         );
       }
@@ -123,7 +123,7 @@ export class BitbucketClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'Bitbucket'),
           response.status,
         );
       }
@@ -160,7 +160,7 @@ export class BitbucketClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'Bitbucket'),
           response.status,
         );
       }
@@ -181,7 +181,7 @@ export class BitbucketClient implements SCMProvider {
         const response = await fetchWithTimeout(nextUrl!, { headers: this.headers });
         if (!response.ok) {
           const text = await response.text();
-          throw new RetryableError(`Bitbucket API error (${response.status}): ${text}`, response.status);
+          throw new RetryableError(parseApiError(response.status, text, 'Bitbucket'), response.status);
         }
         return response.json() as Promise<{ values: Array<{ new?: { path: string }; old?: { path: string }; status: string }>; next?: string }>;
       });
@@ -204,7 +204,7 @@ export class BitbucketClient implements SCMProvider {
           const response = await fetchWithTimeout(url, { headers: this.headers }, 15000);
           if (!response.ok) {
             const text = await response.text();
-            throw new RetryableError(`Bitbucket API error (${response.status}): ${text}`, response.status);
+            throw new RetryableError(parseApiError(response.status, text, 'Bitbucket'), response.status);
           }
           return response.text();
         });
@@ -232,7 +232,7 @@ export class BitbucketClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'Bitbucket'),
           response.status,
         );
       }
@@ -273,7 +273,7 @@ export class BitbucketClient implements SCMProvider {
       if (!response.ok) {
         const text = await response.text();
         throw new RetryableError(
-          `Bitbucket API error (${response.status}): ${text}`,
+          parseApiError(response.status, text, 'Bitbucket'),
           response.status,
         );
       }

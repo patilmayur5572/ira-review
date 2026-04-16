@@ -5,9 +5,10 @@
  */
 
 import * as vscode from 'vscode';
-import { JiraClient, createAIProvider } from 'ira-review';
-import type { AIProviderType } from 'ira-review';
+import { JiraClient, createAIProvider, GitHubClient, BitbucketClient } from 'ira-review';
+import type { AIProviderType, GitHubConfig, BitbucketConfig } from 'ira-review';
 import { CopilotAIProvider } from '../providers/copilotAIProvider';
+import { AmpAIProvider, isAmpCliAvailable } from '../providers/ampAIProvider';
 import { AuthProvider } from '../services/authProvider';
 import { resolveJiraCredentials, resolveAiApiKey } from '../utils/credentialPrompts';
 import { openMarkdownPreview } from '../utils/markdownPreview';
@@ -78,11 +79,12 @@ export async function validateJiraAC(): Promise<void> {
 
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: msg.progress.validateAC(jiraKey), cancellable: false },
-    async () => {
+    async (progress) => {
       try {
         const acField = config.get<string>('jiraAcField', '') || undefined;
         const jira = new JiraClient({ baseUrl: jiraCreds.url, email: jiraCreds.email, token: jiraCreds.token, type: jiraCreds.type, acceptanceCriteriaField: acField });
         const issue = await jira.fetchIssue(jiraKey);
+        progress.report({ message: msg.steps.acFetchingDiff });
 
         const summary = issue.fields.summary || '';
         const acSource = config.get<string>('jiraAcSource', 'both');
@@ -110,7 +112,7 @@ export async function validateJiraAC(): Promise<void> {
             const resp = await fetch(`${bbUrl.replace(/\/+$/, '')}/rest/api/1.0/projects/${repoInfo.owner}/repos/${repoInfo.repo}/pull-requests/${prNum}/diff?contextLines=3`, {
               headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'text/plain' },
             });
-            if (!resp.ok) throw new Error(`Bitbucket API error (${resp.status})`);
+            if (!resp.ok) { const text = await resp.text(); throw new Error(formatApiError(resp.status, text, 'Bitbucket')); }
             diff = await resp.text();
           } else {
             const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
@@ -118,7 +120,7 @@ export async function validateJiraAC(): Promise<void> {
             const resp = await fetch(`${apiBase}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls/${prNum}`, {
               headers: { 'Authorization': `Bearer ${scmToken}`, 'Accept': 'application/vnd.github.v3.diff' },
             });
-            if (!resp.ok) throw new Error(`GitHub API error (${resp.status})`);
+            if (!resp.ok) { const text = await resp.text(); throw new Error(formatApiError(resp.status, text, 'GitHub')); }
             diff = await resp.text();
           }
         } else {
@@ -159,11 +161,20 @@ export async function validateJiraAC(): Promise<void> {
         diff = balancedDiff.join('\n');
 
         // Step 5: AI validation
+        progress.report({ message: msg.steps.acValidating });
         const prompt = buildACValidationPrompt(jiraKey, summary, acceptanceCriteria, diff, fileManifest);
         const aiProvider = config.get<string>('aiProvider', 'copilot');
         let result: string;
 
-        if (aiProvider === 'copilot') {
+        if (aiProvider === 'amp') {
+          if (!isAmpCliAvailable()) {
+            vscode.window.showErrorMessage('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+            return;
+          }
+          const ampMode = config.get<string>('ampMode', 'deep') as 'smart' | 'rush' | 'deep';
+          const amp = new AmpAIProvider(ampMode);
+          result = await amp.rawReview(prompt);
+        } else if (aiProvider === 'copilot') {
           const copilot = new CopilotAIProvider();
           result = await copilot.rawReview(prompt);
         } else {
@@ -180,12 +191,65 @@ export async function validateJiraAC(): Promise<void> {
 
         // Step 6: Show results in rendered markdown preview
         await openMarkdownPreview(result, `ac-validation-${jiraKey}`);
+
+        // Step 7: Offer to post to PR if we have a PR number
+        if (prNum) {
+          const action = await vscode.window.showInformationMessage(
+            await msg.acValidationSuccess(jiraKey, 0, 0),
+            'Post to PR',
+          );
+          if (action === 'Post to PR') {
+            try {
+              const repoInfo = await detectRepo(workspaceRoot);
+              const scmSession = await AuthProvider.getInstance().resolveScmSession(workspaceRoot);
+              if (!scmSession) { vscode.window.showErrorMessage(msg.authRequired()); return; }
+              const scmProvider = (scmSession.provider === 'github-enterprise' ? 'github' : scmSession.provider) as 'github' | 'bitbucket';
+              const scmToken = scmSession.accessToken;
+              const bbUrl = config.get<string>('bitbucketUrl', '');
+              const gheUrl = config.get<string>('githubUrl', '') || repoInfo.baseUrl;
+
+              const scmClient = scmProvider === 'github'
+                ? new GitHubClient({ owner: repoInfo.owner, repo: repoInfo.repo, token: scmToken, ...(gheUrl && { baseUrl: gheUrl }) } as GitHubConfig)
+                : new BitbucketClient({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken, ...(bbUrl && { baseUrl: bbUrl }) } as BitbucketConfig);
+
+              const summary = `# JIRA AC Validation — ${jiraKey}\n\n${result}\n\n---\n*Validated by [IRA Review](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)*`;
+              await scmClient.postSummary(summary, prNum);
+              vscode.window.showInformationMessage(`AC validation posted to PR #${prNum} ✅`);
+            } catch (postErr) {
+              vscode.window.showErrorMessage(`Failed to post AC validation: ${postErr instanceof Error ? postErr.message : postErr}`);
+            }
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         vscode.window.showErrorMessage(msg.acValidationFailed(message));
       }
     },
   );
+}
+
+function formatApiError(status: number, body: string, provider: string): string {
+  const statusMessages: Record<number, string> = {
+    401: 'Authentication failed — check your token',
+    403: 'Access denied — check your permissions',
+    404: 'Not found — check the PR number or repo',
+    429: 'Rate limited — try again shortly',
+    500: 'Server error — try again in a moment',
+    502: 'Service temporarily unavailable',
+    503: 'Service unavailable — try again shortly',
+  };
+  const friendly = statusMessages[status] ?? `HTTP ${status}`;
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const json = JSON.parse(trimmed);
+      const msg = json.message ?? json.error?.message ?? json.error ?? json.errors?.[0]?.message;
+      if (typeof msg === 'string' && msg.length > 0 && msg.length < 200) return `${provider} (${status}): ${msg}`;
+    } catch { /* fall through */ }
+  }
+  if (trimmed.startsWith('<!') || trimmed.includes('<body')) return `${provider} (${status}): ${friendly}`;
+  if (trimmed.length > 0 && trimmed.length < 150) return `${provider} (${status}): ${trimmed}`;
+  return `${provider} (${status}): ${friendly}`;
 }
 
 function buildACValidationPrompt(ticketKey: string, summary: string, acceptanceCriteria: string, diff: string, fileManifest: string[]): string {

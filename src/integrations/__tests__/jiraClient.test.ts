@@ -119,7 +119,7 @@ describe("JiraClient", () => {
     const client = new JiraClient(jiraConfig);
 
     await expect(client.fetchIssue("PROJ-999")).rejects.toThrow(
-      "JIRA API error (404)",
+      "JIRA (404)",
     );
   });
 

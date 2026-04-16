@@ -72,4 +72,57 @@ describe("generateTestCases", () => {
     expect(result.testCases).toHaveLength(0);
     expect(mockProvider.review).not.toHaveBeenCalled();
   });
+
+  it("handles not-testable AC with commented reason", async () => {
+    const notTestableEntry = JSON.stringify([{
+      description: "UI should be user-friendly",
+      type: "not-testable",
+      criterion: "UI should be user-friendly",
+      code: "// NOT TESTABLE: Subjective criterion.\n// RECOMMENDATION: Define measurable criteria.",
+    }]);
+    const mockProvider = {
+      rawReview: vi.fn().mockResolvedValue(notTestableEntry),
+      review: vi.fn().mockResolvedValue({ explanation: notTestableEntry, impact: "", suggestedFix: "" }),
+    };
+
+    const result = await generateTestCases(mockIssue, "jest", mockProvider as any, null);
+    expect(result.testCases).toHaveLength(1);
+    expect(result.testCases[0].type).toBe("not-testable");
+    expect(result.testCases[0].code).toContain("NOT TESTABLE");
+    // not-testable should not count toward edgeCases
+    expect(result.edgeCases).toBe(0);
+  });
+
+  it("maps legacy edge-case type to boundary-value", async () => {
+    const legacy = JSON.stringify([{
+      description: "test boundary",
+      type: "edge-case",
+      criterion: "AC1",
+      code: "test('boundary')",
+    }]);
+    const mockProvider = {
+      rawReview: vi.fn().mockResolvedValue(legacy),
+      review: vi.fn().mockResolvedValue({ explanation: legacy, impact: "", suggestedFix: "" }),
+    };
+
+    const result = await generateTestCases(mockIssue, "jest", mockProvider as any, null);
+    expect(result.testCases[0].type).toBe("boundary-value");
+  });
+
+  it("accepts all new test types", async () => {
+    const allTypes = ["happy-path", "negative", "boundary-value", "authorization", "integration", "state-workflow", "data-integrity", "error-recovery"];
+    const cases = allTypes.map((type, i) => ({
+      description: `test ${type}`, type, criterion: `AC${i + 1}`, code: `test('${type}')`,
+    }));
+    const mockProvider = {
+      rawReview: vi.fn().mockResolvedValue(JSON.stringify(cases)),
+      review: vi.fn().mockResolvedValue({ explanation: JSON.stringify(cases), impact: "", suggestedFix: "" }),
+    };
+
+    const result = await generateTestCases(mockIssue, "jest", mockProvider as any, null);
+    expect(result.testCases).toHaveLength(8);
+    expect(result.testCases.map(tc => tc.type)).toEqual(allTypes);
+    // edgeCases = everything except happy-path and not-testable
+    expect(result.edgeCases).toBe(7);
+  });
 });

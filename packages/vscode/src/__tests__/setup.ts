@@ -70,3 +70,13 @@ vi.mock('ira-review', () => ({
   formatACsForJiraComment: vi.fn(() => 'formatted comment'),
   generateAcceptanceCriteria: vi.fn().mockResolvedValue({ jiraKey: 'TEST-1', summary: 'Test', criteria: [], sources: [], reviewHints: [], totalCriteria: 0 }),
 }));
+
+// Mock ampAIProvider
+vi.mock('../providers/ampAIProvider', () => ({
+  AmpAIProvider: vi.fn(function (this: any) {
+    this.rawReview = vi.fn().mockResolvedValue('[]');
+    this.review = vi.fn().mockResolvedValue({ explanation: '[]', impact: '', suggestedFix: '' });
+  }),
+  isAmpCliAvailable: vi.fn(() => true),
+  ampParallelReview: vi.fn().mockResolvedValue(new Map()),
+}));

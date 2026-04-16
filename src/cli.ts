@@ -357,7 +357,12 @@ program
         sourceFiles,
       );
       if (result.testCases.length > 0) {
-        step("✓", `Generated ${result.totalCases} test case${result.totalCases !== 1 ? "s" : ""} (${result.edgeCases} edge cases)`);
+        const notTestable = result.testCases.filter(tc => tc.type === "not-testable").length;
+        const testable = result.totalCases - notTestable;
+        const parts = [`${testable} test case${testable !== 1 ? "s" : ""}`];
+        if (result.edgeCases > 0) parts.push(`${result.edgeCases} advanced`);
+        if (notTestable > 0) parts.push(`${notTestable} not-testable AC${notTestable !== 1 ? "s" : ""}`);
+        step("✓", `Generated ${parts.join(", ")}`);
       } else {
         step("⚠️", "No test cases generated — check that the ticket has acceptance criteria");
       }
@@ -402,7 +407,12 @@ program
           step("✓", `Written to ${opts.output} — plug them into your test suite`);
         } else {
           for (const tc of result.testCases) {
-            const typeIcon = tc.type === "happy-path" ? "✅" : tc.type === "edge-case" ? "⚡" : "🚫";
+            const typeIcons: Record<string, string> = {
+              "happy-path": "✅", "negative": "❌", "boundary-value": "🔲",
+              "authorization": "🔑", "integration": "🔗", "state-workflow": "🔄",
+              "data-integrity": "📊", "error-recovery": "🛡️", "not-testable": "⏭️",
+            };
+            const typeIcon = typeIcons[tc.type] ?? "✅";
             console.log(`  ${typeIcon} ${tc.description} (${tc.type})`);
             console.log(`     Criterion: ${tc.criterion}`);
             console.log(`     ${tc.code.split("\n").join("\n     ")}`);

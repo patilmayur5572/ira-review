@@ -188,7 +188,7 @@ describe("ComplexityAnalyzer", () => {
     const analyzer = new ComplexityAnalyzer(sonarConfig);
 
     await expect(analyzer.analyze("42")).rejects.toThrow(
-      "Sonar Measures API error (401)",
+      "Sonar (401)",
     );
   });
 });

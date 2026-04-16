@@ -70,6 +70,15 @@ export async function generateTests(): Promise<void> {
         if (aiProvider === 'copilot') {
           const copilot = new CopilotAIProvider();
           result = await generateTestCases(issue, testFramework, copilot, framework);
+        } else if (aiProvider === 'amp') {
+          const { AmpAIProvider, isAmpCliAvailable } = await import('../providers/ampAIProvider');
+          if (!isAmpCliAvailable()) {
+            vscode.window.showErrorMessage('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+            return;
+          }
+          const ampMode = config.get<string>('ampMode', 'smart') as 'smart' | 'rush' | 'deep';
+          const amp = new AmpAIProvider(ampMode);
+          result = await generateTestCases(issue, testFramework, amp, framework);
         } else {
           const aiApiKey = await resolveAiApiKey();
           if (!aiApiKey) return;
@@ -86,8 +95,13 @@ export async function generateTests(): Promise<void> {
           return;
         }
 
+        const typeIcons: Record<string, string> = {
+          "happy-path": "✅", "negative": "❌", "boundary-value": "🔲",
+          "authorization": "🔑", "integration": "🔗", "state-workflow": "🔄",
+          "data-integrity": "📊", "error-recovery": "🛡️", "not-testable": "⏭️",
+        };
         const output = result.testCases
-          .map(tc => `// ${tc.type}: ${tc.description}\n// Criterion: ${tc.criterion}\n${tc.code}`)
+          .map(tc => `// ${typeIcons[tc.type] ?? "✅"} ${tc.type}: ${tc.description}\n// Criterion: ${tc.criterion}\n${tc.code}`)
           .join('\n\n');
 
         const languageMap: Record<string, string> = {

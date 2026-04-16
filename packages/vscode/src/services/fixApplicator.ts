@@ -42,6 +42,15 @@ async function sendRawPrompt(prompt: string): Promise<string> {
     return new CopilotAIProvider().rawReview(prompt);
   }
 
+  if (providerName === 'amp') {
+    const { AmpAIProvider, isAmpCliAvailable } = await import('../providers/ampAIProvider');
+    if (!isAmpCliAvailable()) {
+      throw new Error('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+    }
+    const ampMode = config.get<string>('ampMode', 'smart') as 'smart' | 'rush' | 'deep';
+    return new AmpAIProvider(ampMode).rawReview(prompt);
+  }
+
   // For external providers, call review() and extract the explanation field,
   // which is where parseAIResponse puts non-JSON responses.
   const aiProvider = createAIProvider({
