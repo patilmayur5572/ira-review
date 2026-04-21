@@ -118,7 +118,7 @@ export async function fetchPRSourceBranch(
 }
 
 /**
- * Detect the default branch (silent — no user prompt).
+ * Detect the default branch (silent - no user prompt).
  * Tries: origin/HEAD symbolic ref → develop → main → master → falls back to 'main'.
  */
 export async function detectDefaultBranch(cwd: string): Promise<string> {

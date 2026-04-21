@@ -45,7 +45,7 @@ async function sendRawPrompt(prompt: string): Promise<string> {
   if (providerName === 'amp') {
     const { AmpAIProvider, isAmpCliAvailable } = await import('../providers/ampAIProvider');
     if (!isAmpCliAvailable()) {
-      throw new Error('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+      throw new Error('AMP CLI not found - install it from ampcode.com/install and run `amp login`');
     }
     const ampMode = config.get<string>('ampMode', 'smart') as 'smart' | 'rush' | 'deep';
     return new AmpAIProvider(ampMode).rawReview(prompt);
@@ -98,7 +98,7 @@ export async function applyFix(comment: ReviewComment, onFixApplied?: () => void
     const contextRange = new vscode.Range(contextStart, 0, contextEnd, Number.MAX_SAFE_INTEGER);
     const targetCode = document.getText(contextRange);
 
-    // ±5-line narrow fix range — the lines the LLM is allowed to change
+    // ±5-line narrow fix range - the lines the LLM is allowed to change
     const fixStart = Math.max(0, issueLine - 5);
     const fixEnd = Math.min(totalLines - 1, issueLine + 5);
     const fixRange = new vscode.Range(fixStart, 0, fixEnd, Number.MAX_SAFE_INTEGER);
@@ -114,7 +114,7 @@ export async function applyFix(comment: ReviewComment, onFixApplied?: () => void
 
     const prompt = `You are a senior ${language} developer applying a minimal, surgical fix to a code issue.
 
-## Full File (read-only context — do NOT return this)
+## Full File (read-only context - do NOT return this)
 File: ${comment.filePath}
 Language: ${language}
 
@@ -122,7 +122,7 @@ Language: ${language}
 ${fullFileText}
 \`\`\`
 
-## Surrounding Context (read-only — do NOT return this)
+## Surrounding Context (read-only - do NOT return this)
 Lines ${contextStart + 1}-${contextEnd + 1}:
 \`\`\`
 ${targetCode}
@@ -139,7 +139,13 @@ Suggested approach: ${comment.aiReview.suggestedFix}
 \`\`\`
 ${fixTargetCode}
 \`\`\`
-${rulesSection ? `\n## Team Rules (the fix MUST comply with these)\n${rulesSection}\n` : ''}${sensitiveContext ? `\n## Sensitive Area\n${sensitiveContext}\nApply extra care — this is a critical code path.\n` : ''}
+${rulesSection ? `\n## Team Rules (the fix MUST comply with these)
+${rulesSection}
+` : ''}${sensitiveContext ? `
+## Sensitive Area
+${sensitiveContext}
+Apply extra care - this is a critical code path.
+` : ''}
 ## Rules
 - Return ONLY the corrected version of the "Code to Fix" section (lines ${fixStart + 1}-${fixEnd + 1}).
 - Do NOT return the surrounding context, the full file, or any lines outside the target range.
@@ -148,7 +154,7 @@ ${rulesSection ? `\n## Team Rules (the fix MUST comply with these)\n${rulesSecti
 - Do NOT refactor, rename, reformat, reorder, or "improve" any code beyond the specific issue.
 - Do NOT add comments explaining the fix.
 - The fix must NOT change behavior unrelated to the reported issue.${rulesSection ? '\n- The fix MUST comply with all Team Rules listed above. Do NOT introduce violations of team standards while fixing the issue.' : ''}
-- No markdown fences in your response — return raw code only.
+- No markdown fences in your response - return raw code only.
 - If the issue cannot be fixed within these ${fixEnd - fixStart + 1} lines, respond with exactly: NO_FIX_POSSIBLE`;
 
     const rawResponse = await sendRawPrompt(prompt);
@@ -159,20 +165,20 @@ ${rulesSection ? `\n## Team Rules (the fix MUST comply with these)\n${rulesSecti
     // A1d: NO_FIX_POSSIBLE escape hatch
     if (fixedCode.trim() === 'NO_FIX_POSSIBLE') {
       vscode.window.showInformationMessage(
-        'IRA: This issue requires a broader change — review the suggested fix manually.',
+        'IRA: This issue requires a broader change - review the suggested fix manually.',
       );
       return;
     }
 
     // A2a: Reject empty output
     if (!fixedCode.trim()) {
-      vscode.window.showWarningMessage('IRA: Fix generation returned empty — no changes applied.');
+      vscode.window.showWarningMessage('IRA: Fix generation returned empty - no changes applied.');
       return;
     }
 
     // A2b: Reject no-op (LLM returned identical code)
     if (fixedCode.trimEnd() === fixTargetCode.trimEnd()) {
-      vscode.window.showInformationMessage('IRA: Code already looks correct — no changes needed.');
+      vscode.window.showInformationMessage('IRA: Code already looks correct - no changes needed.');
       return;
     }
 

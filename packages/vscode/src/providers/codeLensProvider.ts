@@ -41,7 +41,7 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
     for (const comment of matching) {
       const line = Math.max(0, comment.line - 1);
       const range = new vscode.Range(line, 0, line, 0);
-      const title = `🔍 IRA: ${comment.severity} — ${comment.message}`;
+      const title = `🔍 IRA: ${comment.severity} - ${comment.message}`;
       const truncated = title.length > 80 ? title.substring(0, 77) + '...' : title;
 
       lenses.push(new vscode.CodeLens(range, {
@@ -56,24 +56,24 @@ export class IraCodeLensProvider implements vscode.CodeLensProvider {
       }));
 
       lenses.push(new vscode.CodeLens(range, {
-        title: '⭐ Apply Fix',
+        title: '🔧 Apply Fix',
         command: 'ira.applyFix',
-        arguments: [comment],
-      }));
-
-      lenses.push(new vscode.CodeLens(range, {
-        title: '✕ Dismiss',
-        command: 'ira.dismissIssue',
         arguments: [comment],
       }));
 
       if (getPRContext()) {
         lenses.push(new vscode.CodeLens(range, {
-          title: '📌 Post to PR',
+          title: '📤 Post to PR',
           command: 'ira.postIssueToPR',
           arguments: [comment],
         }));
       }
+
+      lenses.push(new vscode.CodeLens(range, {
+        title: '🗑️ Dismiss',
+        command: 'ira.dismissIssue',
+        arguments: [comment],
+      }));
     }
 
     return lenses;

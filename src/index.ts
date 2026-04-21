@@ -10,14 +10,14 @@ export { SonarClient } from "./core/sonarClient.js";
 export { filterIssues, groupIssuesByFile } from "./core/issueProcessor.js";
 export { calculateRisk } from "./core/riskScorer.js";
 export { ComplexityAnalyzer } from "./core/complexityAnalyzer.js";
-export { validateAcceptanceCriteria } from "./core/acceptanceValidator.js";
+export { validateAcceptanceCriteria, hasStructuredAC } from "./core/acceptanceValidator.js";
 export { generateTestCases } from "./core/testGenerator.js";
 export { trackRequirementCompletion } from "./core/requirementTracker.js";
 export { buildSummary } from "./core/summaryBuilder.js";
-export { generateAcceptanceCriteria, formatACsForJiraComment } from "./core/acGenerator.js";
+export { generateAcceptanceCriteria, formatACsForJiraComment, formatDiscoveredScenariosForJiraComment } from "./core/acGenerator.js";
 
 // AI
-export { createAIProvider, parseAIResponse } from "./ai/aiClient.js";
+export { createAIProvider, parseAIResponse, AmpCliProvider, isAmpCliAvailable } from "./ai/aiClient.js";
 export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, extractValidLineNumbers, validateIssuesAgainstDiff, resolveIssueLocations, correctLineNumbers, annotateDiffWithLineNumbers } from "./ai/promptBuilder.js";
 
 // SCM

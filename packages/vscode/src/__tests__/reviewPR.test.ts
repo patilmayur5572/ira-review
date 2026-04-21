@@ -29,7 +29,7 @@ vi.mock('ira-review', async (importOriginal) => {
   };
 });
 
-// Mock child_process — execGit uses cp.execFile(cmd, args, opts, cb)
+// Mock child_process - execGit uses cp.execFile(cmd, args, opts, cb)
 vi.mock('child_process', () => ({
   execFile: vi.fn((cmd: string, args: string[], opts: any, cb: Function) => {
     const fullCmd = [cmd, ...args].join(' ');
@@ -88,7 +88,23 @@ vi.mock('../utils/credentialPrompts', () => ({
   resolveAiApiKey: vi.fn().mockResolvedValue('test-key'),
 }));
 
-// Mock fs — existsSync returns true for '.git' paths, readdirSync returns []
+// Mock jiraEnrichment
+vi.mock('../services/jiraEnrichment', () => ({
+  enrichWithJira: vi.fn().mockResolvedValue({
+    jiraTicket: null,
+    acceptanceValidation: null,
+    acGeneration: null,
+    requirementCompletion: null,
+  }),
+  postACsToJira: vi.fn().mockResolvedValue(true),
+}));
+
+// Mock reviewResultsPanel
+vi.mock('../providers/reviewResultsPanel', () => ({
+  showReviewResultsPanel: vi.fn(),
+}));
+
+// Mock fs - existsSync returns true for '.git' paths, readdirSync returns []
 vi.mock('fs', () => ({
   existsSync: vi.fn((p: string) => typeof p === 'string' && p.includes('.git')),
   readdirSync: vi.fn(() => []),
@@ -116,7 +132,7 @@ function createStatusBar(): vscode.StatusBarItem {
 }
 
 function createTreeProvider() {
-  return { update: vi.fn() } as any;
+  return { update: vi.fn(), updateFromResult: vi.fn() } as any;
 }
 
 function createCodeLensProvider() {
@@ -153,7 +169,7 @@ describe('reviewPR', () => {
   it('should show error if no workspace', async () => {
     (vscode.workspace as any).workspaceFolders = undefined;
     await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder open — open a project first');
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder open - open a project first');
   });
 
   it('should return if user cancels review mode pick', async () => {
@@ -263,7 +279,7 @@ describe('reviewPR', () => {
       }
     });
 
-    // Make parseStandaloneResponse throw — this is caught per-file
+    // Make parseStandaloneResponse throw - this is caught per-file
     const iraReview = await import('ira-review');
     (iraReview.parseStandaloneResponse as any).mockImplementation(() => { throw new Error('Unexpected AI error'); });
 
@@ -276,7 +292,7 @@ describe('reviewPR', () => {
     });
 
     await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
-    // Per-file error is caught silently — success message is still shown
+    // Per-file error is caught silently - success message is still shown
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('clean'),
     );
@@ -480,7 +496,7 @@ describe('reviewPR', () => {
 
     await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
 
-    // Issue count should be 1, not 0 — evidence filter was removed
+    // Issue count should be 1, not 0 - evidence filter was removed
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('1 issue'),
     );
@@ -580,7 +596,7 @@ describe('reviewPR', () => {
     });
 
     await reviewPR(context, diagnostics, statusBar, treeProvider, codeLensProvider);
-    // Review should complete — the createAIProvider mock returns a provider with review()
+    // Review should complete - the createAIProvider mock returns a provider with review()
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('clean'),
     );

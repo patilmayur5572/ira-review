@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "2.0.2",
+  "version": "3.0.0",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -57,10 +57,6 @@
         "title": "IRA: Review Current PR"
       },
       {
-        "command": "ira.reviewFile",
-        "title": "IRA: Review Current File"
-      },
-      {
         "command": "ira.generateTests",
         "title": "IRA: Generate Tests"
       },
@@ -96,14 +92,6 @@
       {
         "command": "ira.initRules",
         "title": "IRA: Init Rules File"
-      },
-      {
-        "command": "ira.validateJiraAC",
-        "title": "IRA: Validate JIRA AC"
-      },
-      {
-        "command": "ira.suggestAC",
-        "title": "IRA: Suggest Acceptance Criteria"
       }
     ],
     "menus": {

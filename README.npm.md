@@ -78,7 +78,7 @@ Commit a `.ira-rules.json` to your repo root. Rules are injected into the AI pro
 **Rules:**
 - `message` + `severity` required. `bad`/`good` examples and `paths` are optional.
 - Rules without `paths` apply to all files. Rules with `paths` match only those directories.
-- Maximum 50 rules. Deterministic checks (naming, formatting) belong in ESLint.
+- Maximum 100 rules. Deterministic checks (naming, formatting) belong in ESLint.
 - Invalid rules are skipped with a warning, not a crash.
 - No license gating. Works in CLI, CI/CD, and VS Code extension.
 
@@ -172,12 +172,12 @@ CLI flags override env vars, which override the config file. Token fields are bl
 
 **SCM:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
 
-**AI:** OpenAI (default), Azure OpenAI, Anthropic, Ollama (local, no key needed)
+**AI:** OpenAI (default), Azure OpenAI, Anthropic, Ollama (local, no key needed), AMP CLI (VS Code extension)
 
 ## Requirements
 
 - Node.js 18+
-- An AI provider API key (or Ollama running locally)
+- An AI provider API key (or Ollama running locally, or AMP CLI / GitHub Copilot for the VS Code extension)
 
 ## Security
 

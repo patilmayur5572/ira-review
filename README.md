@@ -39,7 +39,7 @@ IRA runs a 13-step pipeline for each review. Every step after step 1 is designed
 7.  Fetch source files for changed files (for full-file context)
 8.  Run AI review on each file/issue (concurrent, configurable model)
 9.  Calculate risk score (0-100) from issue severity, complexity, and security signals
-10. Validate JIRA acceptance criteria against the diff (if configured)
+10. Automatically validate or generate JIRA acceptance criteria (if configured)
 11. Deduplicate: skip issues already commented on in previous runs
 12. Post summary + inline comments to the PR
 13. Send Slack/Teams notification (if configured, respects risk threshold)
@@ -98,7 +98,7 @@ flowchart LR
 
 ```
 src/
-  ai/           AI provider abstraction (OpenAI, Anthropic, Azure, Ollama)
+  ai/           AI provider abstraction (OpenAI, Anthropic, Azure, Ollama, AMP)
   core/         Review engine, risk scorer, acceptance validator, test generator
   scm/          GitHub and Bitbucket clients (diff, comments, labels, build status)
   integrations/ JIRA client, Slack/Teams notifier
@@ -182,7 +182,7 @@ Each rule has a `message` (what to tell the developer), a `severity` (BLOCKER, C
 }
 ```
 
-Rules without `paths` apply to all files. Rules with `paths` are only checked against matching files. The file is validated at load time: invalid severity values and missing required fields are skipped with a warning. Maximum 30 rules per file. IRA rules are for nuanced, context-dependent standards that linters cannot express. Deterministic checks (naming conventions, import order, formatting) belong in ESLint.
+Rules without `paths` apply to all files. Rules with `paths` are only checked against matching files. The file is validated at load time: invalid severity values and missing required fields are skipped with a warning. Maximum 100 rules per file. IRA rules are for nuanced, context-dependent standards that linters cannot express. Deterministic checks (naming conventions, import order, formatting) belong in ESLint.
 
 Rules are enforced in all review surfaces (CLI, CI/CD, VS Code extension) with no license gating. In the VS Code extension, run `IRA: Init Rules File` from the command palette to scaffold an empty `.ira-rules.json`. The extension ships a JSON Schema for the file, so you get autocomplete and validation as you edit.
 
@@ -210,7 +210,7 @@ IRA is not a SaaS product. There is no hosted service, no telemetry, no analytic
 | | CLI | VS Code Extension |
 |---|---|---|
 | **Use case** | CI pipelines, scripting, headless environments | Interactive development |
-| **AI default** | OpenAI (requires API key) | GitHub Copilot (zero config) |
+| **AI default** | OpenAI (requires API key) | GitHub Copilot (zero config), AMP CLI also supported |
 | **Auth** | Environment variables or CLI flags | VS Code OAuth + OS keychain |
 | **Output** | Terminal + PR comments | Inline diagnostics, CodeLens, TreeView, risk badge |
 | **JIRA/Sonar** | CLI flags or env vars | VS Code settings |
@@ -282,7 +282,7 @@ Suggested Fix: Use parameterized queries:
 3. `Cmd+Shift+P` > `IRA: Review Current PR`
 4. Enter your PR number
 
-If you have GitHub Copilot, that is all you need. No API keys, no configuration.
+If you have GitHub Copilot, that is all you need. No API keys, no configuration. Alternatively, set the AI provider to `amp` if you have the AMP CLI installed (`amp login`).
 
 ### CLI
 
@@ -393,6 +393,7 @@ npx ira-review review \
 | Provider | Notes |
 |---|---|
 | GitHub Copilot | VS Code only, zero config, uses existing session |
+| AMP CLI | VS Code only, requires `amp` CLI installed and authenticated (`amp login`) |
 | OpenAI | Default for CLI |
 | Azure OpenAI | Requires `--ai-base-url` and `--ai-deployment` |
 | Anthropic | Pass key with `--ai-api-key` |
@@ -420,7 +421,7 @@ CLI flags override environment variables, which override the config file. Token 
 ## Requirements
 
 - Node.js 18+
-- An AI provider API key (or Ollama running locally, or GitHub Copilot for the VS Code extension)
+- An AI provider API key (or Ollama running locally, or GitHub Copilot / AMP CLI for the VS Code extension)
 - A GitHub or Bitbucket repo with an open PR
 
 ## License

@@ -205,7 +205,12 @@ program
         }
       } else if (result.acceptanceValidation) {
         const av = result.acceptanceValidation;
-        step("📋", `JIRA AC:           ${av.overallPass ? "all criteria passed ✅" : "some criteria need attention 📋"}`);
+        const isBug = av.issueType === 'bug';
+        if (isBug) {
+          step("🐛", `Bug fix:           ${av.overallPass ? "all checks passed ✅" : "some checks need attention 📋"}`);
+        } else {
+          step("📋", `JIRA AC:           ${av.overallPass ? "all criteria passed ✅" : "some criteria need attention 📋"}`);
+        }
       }
       if (result.testGeneration) {
         step("🧪", `Tests generated:   ${result.testGeneration.totalCases} (${result.testGeneration.edgeCases} edge cases) — ready to plug in`);

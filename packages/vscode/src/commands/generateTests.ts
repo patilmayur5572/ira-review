@@ -73,7 +73,7 @@ export async function generateTests(): Promise<void> {
         } else if (aiProvider === 'amp') {
           const { AmpAIProvider, isAmpCliAvailable } = await import('../providers/ampAIProvider');
           if (!isAmpCliAvailable()) {
-            vscode.window.showErrorMessage('AMP CLI not found — install it from ampcode.com/install and run `amp login`');
+            vscode.window.showErrorMessage('AMP CLI not found - install it from ampcode.com/install and run `amp login`');
             return;
           }
           const ampMode = config.get<string>('ampMode', 'smart') as 'smart' | 'rush' | 'deep';

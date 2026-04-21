@@ -1,6 +1,6 @@
 /**
- * IRA — Intelligent Review Assistant
- * Ollama Setup Service — guides users without Copilot/AI keys to a working setup
+ * IRA - Intelligent Review Assistant
+ * Ollama Setup Service - guides users without Copilot/AI keys to a working setup
  */
 
 import * as vscode from 'vscode';
@@ -86,7 +86,7 @@ export async function setupOllama(): Promise<void> {
     return;
   }
 
-  // Ollama is running — check for available models
+  // Ollama is running - check for available models
   const models = await listLocalModels();
 
   let model: string;
@@ -94,7 +94,7 @@ export async function setupOllama(): Promise<void> {
     // Use the first available model
     model = models[0];
   } else {
-    // No models — pull the default
+    // No models - pull the default
     const pulled = await pullModel(DEFAULT_MODEL);
     if (!pulled) {
       vscode.window.showErrorMessage('IRA: Failed to pull model. Check that Ollama is running and try again.');
@@ -105,23 +105,12 @@ export async function setupOllama(): Promise<void> {
 
   await configureOllama(model);
 
-  // Auto-review the open file if one exists
-  if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.getText().trim()) {
-    const runNow = await vscode.window.showInformationMessage(
-      `IRA: Ollama configured with ${model}. Want to run a review on the open file?`,
-      'Review Now',
-    );
-    if (runNow === 'Review Now') {
-      await vscode.commands.executeCommand('ira.reviewFile');
-    }
-  } else {
-    vscode.window.showInformationMessage(`IRA: You're all set! Right-click any file to start a review.`);
-  }
+  vscode.window.showInformationMessage(`IRA: Ollama configured with ${model}. Use "IRA: Review PR" with local changes to start a review.`);
 }
 
 /**
  * Show the guided setup notification when no AI provider is available.
- * Called from reviewFile/reviewPR catch blocks.
+ * Called from reviewPR catch blocks.
  */
 export async function showAISetupPrompt(): Promise<void> {
   const action = await vscode.window.showWarningMessage(

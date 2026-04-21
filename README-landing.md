@@ -37,24 +37,18 @@ npx ira-review review --pr 42 --dry-run
 
 ## Features
 
-### Free
-
 - AI-powered code review with inline PR comments
-- Review Current File — review the currently open file without needing a PR
 - Risk scoring (0-100) with auto-labeling on GitHub
 - JIRA acceptance criteria validation with per-criterion pass/fail
 - Test Generation from JIRA — generate test cases from JIRA acceptance criteria in 8 frameworks
 - SonarQube issue enrichment with AI explanations
 - Slack and Teams notifications with risk threshold filtering
-- GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server
-- OpenAI, Azure OpenAI, Anthropic, Ollama (local), GitHub Copilot
-
-### Pro ($10/mo)
-
 - Auto-review on save
 - One-click "Apply Fix" via CodeLens
 - Review history with search
 - Trends dashboard (issues over time, severity breakdown)
+- GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server
+- OpenAI, Azure OpenAI, Anthropic, Ollama (local), GitHub Copilot, AMP CLI
 
 ---
 
@@ -65,8 +59,7 @@ npx ira-review review --pr 42 --dry-run
 1. Install the extension
 2. Open a project with a git remote
 3. Run `IRA: Review Current PR` from the Command Palette (`Cmd+Shift+P`)
-4. Or run `IRA: Review Current File` to review the open file without a PR
-5. Or run `IRA: Generate Tests` to generate test cases from JIRA acceptance criteria
+4. Or run `IRA: Generate Tests` to generate test cases from JIRA acceptance criteria
 
 ### CLI
 
@@ -135,6 +128,7 @@ jobs:
 | **Azure OpenAI** | `--ai-provider azure-openai` | Also needs `--ai-base-url` and `--ai-deployment` |
 | **Anthropic** | `--ai-provider anthropic` | Pass key with `--ai-api-key` or set `IRA_AI_API_KEY` |
 | **Ollama** (local) | `--ai-provider ollama` | Runs locally, no API key needed |
+| **AMP CLI** | VS Code extension only | Requires `amp` CLI installed and authenticated (`amp login`) |
 
 ## Supported Test Frameworks
 
@@ -178,7 +172,7 @@ Suggested Fix: Use parameterized queries:
 ## Requirements
 
 - Node.js 18+
-- An AI provider API key (or Ollama running locally)
+- An AI provider API key (or Ollama running locally, or AMP CLI / GitHub Copilot for the VS Code extension)
 - A GitHub or Bitbucket repo with an open PR
 
 ## Support

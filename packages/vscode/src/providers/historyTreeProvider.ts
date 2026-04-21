@@ -1,6 +1,6 @@
 /**
  * Copyright (c) IRA - Intelligent Review Assistant
- * History Tree View Provider — shows past review results
+ * History Tree View Provider - shows past review results
  */
 
 import * as vscode from 'vscode';
@@ -48,7 +48,7 @@ export class IraHistoryProvider implements vscode.TreeDataProvider<HistoryTreeIt
     return entries.map((entry) => {
       const date = new Date(entry.timestamp).toLocaleString();
       const riskIcon = riskEmoji(entry.riskLevel);
-      const label = `${riskIcon} PR #${entry.pullRequestId} — ${entry.totalIssues} issues`;
+      const label = `${riskIcon} PR #${entry.pullRequestId} - ${entry.totalIssues} issues`;
 
       const issueChildren = entry.comments.slice(0, 20).map((c) => {
         const child = new HistoryTreeItem(

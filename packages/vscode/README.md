@@ -28,7 +28,7 @@ JIRA AC Validation (PROJ-1234):
 
 ## The Feature No Other Extension Has: JIRA Ticket vs PR Validation
 
-Your reviewer opens the PR and asks: "Does this actually cover AC #3?"
+Your reviewer opens the PR and asks: "Does this actually cover AC \#3?"
 
 IRA answers that before they have to ask. It pulls the JIRA ticket from your branch name, reads the acceptance criteria, diffs them against your code changes, and tells you exactly which ACs are covered and which are not.
 
@@ -42,7 +42,7 @@ No other VS Code extension, no CI bot, and no AI tool does this. This alone save
 
 1. **Catches bugs that linters miss** - security issues, logic gaps, and edge cases across your entire PR diff
 2. **Enforces your team's rules** - commit a `.ira-rules.json` and IRA checks every PR against your standards automatically
-3. **Validates your code against the JIRA ticket** - checks whether your changes actually satisfy the acceptance criteria
+3. **Validates your code against the JIRA ticket** - automatically checks whether your changes satisfy the acceptance criteria, or suggests ACs when none exist
 4. **Scores the risk** (0-100) so you know if your PR is safe to submit or needs more work
 5. **Shows issues inline in your editor** - squiggly lines, CodeLens, and sidebar panel, exactly like TypeScript errors
 6. **Generates PR descriptions** from your diff and JIRA context so your PRs stop showing up with one-line descriptions
@@ -85,7 +85,7 @@ Copilot helps you write code. IRA tells you if that code will survive review.
 | **SonarQube** | None | Enriches reviews with static analysis data |
 | **Output** | Code suggestions | Inline diagnostics, CodeLens, risk badge |
 
-They are complementary. Use Copilot to write. Use IRA to review. IRA uses your existing Copilot subscription as its default AI backend, so there is nothing extra to configure.
+They are complementary. Use Copilot to write. Use IRA to review. IRA uses your existing Copilot subscription as its default AI backend, so there is nothing extra to configure. You can also use AMP CLI as the AI backend by changing the `ira.aiProvider` setting to `amp`.
 
 ---
 
@@ -97,7 +97,7 @@ They are complementary. Use Copilot to write. Use IRA to review. IRA uses your e
 4. Pick "I have a PR number" or "No PR yet (review local changes)"
 5. Issues appear inline in your editor
 
-That is it. If you have GitHub Copilot, IRA uses it automatically. No API keys, no config files, no setup wizard. No PR? No problem - IRA diffs your local changes against the default branch.
+That is it. If you have GitHub Copilot, IRA uses it automatically. No API keys, no config files, no setup wizard. Have AMP CLI? Set the AI provider to `amp` in settings and IRA uses your AMP session instead. No PR? No problem - IRA diffs your local changes against the default branch.
 
 **Bitbucket?** IRA auto-detects it from your git remote. It will ask for your token once and store it in the OS keychain.
 
@@ -129,7 +129,7 @@ Put them in `.ira-rules.json` at your repo root. IRA enforces them on every revi
 }
 ```
 
-Run `IRA: Init Rules File` from the command palette to scaffold one. IRA ships a JSON Schema, so you get autocomplete and validation as you edit. Rules are scoped by `paths` (optional), capped at 30 per file, and enforced in every review surface with no license gating.
+Run `IRA: Init Rules File` from the command palette to scaffold one. IRA ships a JSON Schema, so you get autocomplete and validation as you edit. Rules are scoped by `paths` (optional), capped at 100 per file, and enforced in every review surface with no license gating.
 
 ### Sensitive Areas
 
@@ -180,22 +180,18 @@ All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux
 | Command | What it does |
 |---|---|
 | `IRA: Review Current PR` | Review all changed files in a pull request, or review local changes without a PR |
-| `IRA: Review Current File` | Review the active editor file |
 | `IRA: Generate PR Description` | Generate a PR description from the diff and JIRA context |
 | `IRA: Generate Tests` | Generate test cases from JIRA acceptance criteria |
 | `IRA: Init Rules File` | Scaffold a `.ira-rules.json` in the workspace root |
-| `IRA: Validate JIRA AC` | Validate local changes against JIRA acceptance criteria (no PR needed) |
-| `IRA: Show Risk Score` | Calculate and display the risk score for the current file |
 | `IRA: Sign In (GitHub / Bitbucket)` | Authenticate with your SCM provider |
 | `IRA: Sign Out` | Clear all stored credentials from the OS keychain |
 | `IRA: Configure` | Open IRA settings |
-| `IRA: Activate Pro License` | Enter a Pro license key |
 
 ---
 
 ## Under the Hood
 
-- **AI Providers:** GitHub Copilot (default, zero config), OpenAI, Azure OpenAI, Anthropic, Ollama (fully local)
+- **AI Providers:** GitHub Copilot (default, zero config), AMP CLI, OpenAI, Azure OpenAI, Anthropic, Ollama (fully local)
 - **SCM Providers:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
 - **JIRA:** Cloud (Atlassian-hosted) and Server/Data Center (self-hosted) with auto-detection
 - **Integrations:** SonarQube (static analysis enrichment), JIRA (acceptance criteria validation), Slack and Teams (review notifications)

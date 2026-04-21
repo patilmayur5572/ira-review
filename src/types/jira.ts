@@ -27,6 +27,7 @@ export interface AcceptanceValidationResult {
   summary: string;
   criteria: AcceptanceCriterion[];
   overallPass: boolean;
+  issueType?: 'story' | 'bug' | 'task' | 'other';
 }
 
 export type TestFramework = "jest" | "vitest" | "mocha" | "playwright" | "cypress" | "gherkin" | "pytest" | "junit";

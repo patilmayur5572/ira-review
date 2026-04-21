@@ -17,7 +17,7 @@ import { CommentTracker, deduplicateKey } from "../scm/commentTracker.js";
 import { calculateRisk } from "./riskScorer.js";
 import { ComplexityAnalyzer } from "./complexityAnalyzer.js";
 import { JiraClient } from "../integrations/jiraClient.js";
-import { validateAcceptanceCriteria } from "./acceptanceValidator.js";
+import { validateAcceptanceCriteria, hasStructuredAC } from "./acceptanceValidator.js";
 import { generateTestCases } from "./testGenerator.js";
 import { trackRequirementCompletion } from "./requirementTracker.js";
 import { buildSummary } from "./summaryBuilder.js";
@@ -308,9 +308,10 @@ export class ReviewEngine {
         const acSource = this.config.jiraAcSource ?? "both";
         const explicitAC = jiraIssue.fields.acceptanceCriteria?.trim() || null;
         const descriptionAC = jiraIssue.fields.description?.trim() || null;
-        const hasAC = acSource === "customField" ? !!explicitAC
-          : acSource === "description" ? !!descriptionAC
-          : !!(explicitAC || descriptionAC);
+        const rawAC = acSource === "customField" ? explicitAC
+          : acSource === "description" ? descriptionAC
+          : explicitAC || descriptionAC;
+        const hasAC = !!rawAC && hasStructuredAC(rawAC);
 
         if (hasAC) {
           // Normal flow: validate existing ACs
@@ -337,8 +338,10 @@ export class ReviewEngine {
           console.log(`  No acceptance criteria found for ${this.config.jiraTicket}. Generating suggestions...`);
 
           const addedLines = (fullDiff.match(/^\+[^+]/gm) || []).length;
-          if (addedLines < 10) {
-            warnings.push(`Skipped AC generation for ${this.config.jiraTicket}: only ${addedLines} lines added (minimum 10)`);
+          const deletedLines = (fullDiff.match(/^-[^-]/gm) || []).length;
+          const changedLines = addedLines + deletedLines;
+          if (changedLines < 3) {
+            warnings.push(`Skipped AC generation for ${this.config.jiraTicket}: only ${changedLines} lines changed (minimum 3)`);
           } else {
             let commitMessages: string[] = [];
             try {

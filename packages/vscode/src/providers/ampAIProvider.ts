@@ -1,6 +1,6 @@
 /**
- * IRA — Intelligent Review Assistant
- * AMP AI Provider — uses AMP CLI for code reviews
+ * IRA - Intelligent Review Assistant
+ * AMP AI Provider - uses AMP CLI for code reviews
  * Requires: `amp` CLI installed and authenticated (`amp login`)
  */
 
@@ -29,11 +29,62 @@ export class AmpAIProvider {
 
   async rawReview(prompt: string): Promise<string> {
     return new Promise<string>((resolve, reject) => {
+      // VS Code extension host may not inherit shell env vars (proxy, certs).
+      // Scan user shell configs and merge any missing network/SSL vars.
+      const env = { ...process.env };
+      const os = require('os');
+      const fs = require('fs');
+      const path = require('path');
+      const home = os.homedir();
+      const isWin = process.platform === 'win32';
+
+      const networkVars = [
+        'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY',
+        'http_proxy', 'https_proxy', 'no_proxy',
+        'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS',
+        'REQUESTS_CA_BUNDLE',
+        'NODE_TLS_REJECT_UNAUTHORIZED',
+      ];
+
+      const missingVars = networkVars.filter(v => !env[v]);
+      if (missingVars.length > 0) {
+        const rcFiles = isWin
+          ? [
+              path.join(home, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
+              path.join(home, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1'),
+            ]
+          : ['.zshenv', '.zshrc', '.bashrc', '.bash_profile'].map(f => path.join(home, f));
+
+        for (const rcPath of rcFiles) {
+          try {
+            const content = fs.readFileSync(rcPath, 'utf-8');
+            for (const varName of missingVars) {
+              if (env[varName]) continue;
+              // Unix: export VAR=value / PowerShell: $env:VAR = "value"
+              const re = isWin
+                ? new RegExp(`\\$env:${varName}\\s*=\\s*["']?(.+?)["']?\\s*$`, 'm')
+                : new RegExp(`${varName}=(.+?)(?:\\s|$)`);
+              const match = content.match(re);
+              if (match) {
+                env[varName] = match[1].replace(/['"]/g, '').replace(/^~/, home).replace(/%USERPROFILE%/gi, home).trim();
+              }
+            }
+          } catch { /* file not found */ }
+        }
+      }
+
+      // Resolve tilde in cert paths
+      for (const v of ['SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS', 'REQUESTS_CA_BUNDLE']) {
+        if (env[v]) env[v] = env[v].replace(/^~/, home);
+      }
+
       const child = cp.spawn('amp', [
         '--execute', '--stream-json',
         '--mode', this.mode,
-        prompt,
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      ], { stdio: ['pipe', 'pipe', 'pipe'], env });
+
+      child.stdin.write(prompt);
+      child.stdin.end();
 
       let result = '';
       let errorOutput = '';
@@ -43,7 +94,7 @@ export class AmpAIProvider {
       child.stdout.on('data', (chunk: Buffer) => {
         stdoutBuffer += chunk.toString();
         const lines = stdoutBuffer.split('\n');
-        // Keep the last element — it may be an incomplete line
+        // Keep the last element - it may be an incomplete line
         stdoutBuffer = lines.pop()!;
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -57,7 +108,7 @@ export class AmpAIProvider {
               }
             }
           } catch {
-            // Non-JSON line — ignore
+            // Non-JSON line - ignore
           }
         }
       });
@@ -83,7 +134,7 @@ export class AmpAIProvider {
               }
             }
           } catch {
-            // Non-JSON residual — ignore
+            // Non-JSON residual - ignore
           }
         }
 
@@ -114,7 +165,7 @@ export class AmpAIProvider {
 export async function ampParallelReview(
   prompts: Array<{ key: string; prompt: string }>,
   mode: AmpMode,
-  concurrency: number = 5,
+  concurrency: number = 10,
 ): Promise<Map<string, string>> {
   const results = new Map<string, string>();
   const amp = new AmpAIProvider(mode);

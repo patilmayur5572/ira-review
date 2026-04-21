@@ -1,6 +1,6 @@
 /**
  * Copyright (c) IRA - Intelligent Review Assistant
- * Review History Store — stores all review results locally (all users)
+ * Review History Store - stores all review results locally (all users)
  * UI access gated behind Pro license
  */
 

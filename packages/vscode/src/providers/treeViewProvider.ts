@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import type { ReviewComment } from 'ira-review';
+import type { ReviewComment, ReviewResult } from 'ira-review';
 
 export class IraIssueItem extends vscode.TreeItem {
   constructor(
@@ -20,12 +20,52 @@ export class IraIssueItem extends vscode.TreeItem {
 export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> {
   private _results: ReviewComment[] = [];
   private _workspaceRoot: string = '';
+  private _jiraTicket: string | null = null;
+  private _acStatus: { met: number; total: number } | null = null;
+  private _acGenCount: number = 0;
+  private _completionPct: number | null = null;
+  private _issueType: string | null = null;
+  private _riskLabel: string | null = null;
   private _onDidChangeTreeData = new vscode.EventEmitter<IraIssueItem | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   update(comments: ReviewComment[], workspaceRoot?: string): void {
     this._results = comments;
     if (workspaceRoot) this._workspaceRoot = workspaceRoot;
+    this._onDidChangeTreeData.fire();
+  }
+
+  updateFromResult(result: ReviewResult, workspaceRoot?: string): void {
+    this._results = result.comments;
+    if (workspaceRoot) this._workspaceRoot = workspaceRoot;
+
+    // JIRA status
+    if (result.acceptanceValidation) {
+      this._jiraTicket = result.acceptanceValidation.jiraKey;
+      const criteria = result.acceptanceValidation.criteria || [];
+      this._acStatus = { met: criteria.filter(c => c.met).length, total: criteria.length };
+      this._issueType = result.acceptanceValidation.issueType ?? null;
+    } else {
+      this._jiraTicket = null;
+      this._acStatus = null;
+      this._issueType = null;
+    }
+
+    if (result.acGeneration) {
+      this._jiraTicket = result.acGeneration.jiraKey;
+      this._acGenCount = result.acGeneration.totalCriteria;
+    } else {
+      this._acGenCount = 0;
+    }
+
+    if (result.requirementCompletion) {
+      this._completionPct = (result.requirementCompletion as any).completionPercentage ?? null;
+    } else {
+      this._completionPct = null;
+    }
+
+    this._riskLabel = result.risk ? `${result.risk.score}/100 (${result.risk.level})` : null;
+
     this._onDidChangeTreeData.fire();
   }
 
@@ -47,6 +87,44 @@ export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> 
 
     if (element) {
       return [];
+    }
+
+    const topItems: IraIssueItem[] = [];
+
+    // JIRA summary nodes
+    if (this._jiraTicket && this._acStatus) {
+      const { met, total } = this._acStatus;
+      const allMet = met === total && total > 0;
+      const isBug = this._issueType === 'bug';
+      const label = isBug
+        ? `🐛 ${this._jiraTicket} (${met}/${total} bug checks passed${allMet ? ' ✅' : ''})`
+        : `🎯 ${this._jiraTicket} (${met}/${total} ACs met${allMet ? ' ✅' : ''})`;
+      const item = new IraIssueItem(label, vscode.TreeItemCollapsibleState.None);
+      topItems.push(item);
+    }
+
+    if (this._jiraTicket && this._acGenCount > 0) {
+      const item = new IraIssueItem(
+        `📝 ${this._jiraTicket} - ${this._acGenCount} ACs suggested`,
+        vscode.TreeItemCollapsibleState.None,
+      );
+      topItems.push(item);
+    }
+
+    if (this._completionPct !== null) {
+      const item = new IraIssueItem(
+        `📊 Completion: ${this._completionPct}%`,
+        vscode.TreeItemCollapsibleState.None,
+      );
+      topItems.push(item);
+    }
+
+    if (this._riskLabel) {
+      const item = new IraIssueItem(
+        `⚠️ Risk: ${this._riskLabel}`,
+        vscode.TreeItemCollapsibleState.None,
+      );
+      topItems.push(item);
     }
 
     const grouped = new Map<string, ReviewComment[]>();
@@ -86,7 +164,7 @@ export class IraIssuesProvider implements vscode.TreeDataProvider<IraIssueItem> 
       fileItems.push(fileItem);
     }
 
-    return fileItems;
+    return [...topItems, ...fileItems];
   }
 }
 

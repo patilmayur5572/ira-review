@@ -23,7 +23,7 @@ vi.mock('vscode', () => ({
     showInputBox: vi.fn(),
     showQuickPick: vi.fn(),
     showTextDocument: vi.fn(),
-    withProgress: vi.fn((opts: any, task: any) => task({ report: vi.fn() })),
+    withProgress: vi.fn((opts: any, task: any) => task({ report: vi.fn() }, { isCancellationRequested: false, onCancellationRequested: vi.fn() })),
     registerWebviewViewProvider: vi.fn(),
     registerTreeDataProvider: vi.fn(),
   },

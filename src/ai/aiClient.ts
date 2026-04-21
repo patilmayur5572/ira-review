@@ -1,5 +1,8 @@
 import OpenAI from "openai";
 import { execSync, spawn } from "node:child_process";
+import { homedir } from "node:os";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import type { AIConfig } from "../types/config.js";
 import type { AIProvider, AIReviewComment } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
@@ -218,7 +221,17 @@ export function parseAIResponse(content: string): AIReviewComment {
   };
 }
 
-class AmpCliProvider implements AIProvider {
+/** Check whether the AMP CLI is available on the system PATH. */
+export function isAmpCliAvailable(): boolean {
+  try {
+    execSync("amp --version", { stdio: "ignore", timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export class AmpCliProvider implements AIProvider {
   private readonly mode: string;
 
   constructor(mode?: string) {
@@ -231,19 +244,66 @@ class AmpCliProvider implements AIProvider {
     return parseAIResponse(cleaned);
   }
 
-  private rawReview(prompt: string): Promise<string> {
+  rawReview(prompt: string): Promise<string> {
     return new Promise<string>((resolve, reject) => {
+      const env = { ...process.env };
+      const home = homedir();
+      const isWin = process.platform === "win32";
+
+      // Resolve missing network/SSL env vars from shell configs
+      const networkVars = [
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+        "http_proxy", "https_proxy", "no_proxy",
+        "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
+        "REQUESTS_CA_BUNDLE", "NODE_TLS_REJECT_UNAUTHORIZED",
+      ];
+      const missingVars = networkVars.filter(v => !env[v]);
+      if (missingVars.length > 0) {
+        const rcFiles = isWin
+          ? [
+              join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"),
+              join(home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1"),
+            ]
+          : [".zshenv", ".zshrc", ".bashrc", ".bash_profile"].map(f => join(home, f));
+
+        for (const rcPath of rcFiles) {
+          try {
+            const content = readFileSync(rcPath, "utf-8");
+            for (const varName of missingVars) {
+              if (env[varName]) continue;
+              const re = isWin
+                ? new RegExp(`\\$env:${varName}\\s*=\\s*["']?(.+?)["']?\\s*$`, "m")
+                : new RegExp(`${varName}=(.+?)(?:\\s|$)`);
+              const match = content.match(re);
+              if (match) {
+                env[varName] = match[1].replace(/['"]/g, "").replace(/^~/, home).replace(/%USERPROFILE%/gi, home).trim();
+              }
+            }
+          } catch { /* file not found */ }
+        }
+      }
+      for (const v of ["SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE"]) {
+        if (env[v]) env[v] = env[v].replace(/^~/, home);
+      }
+
       const child = spawn("amp", [
         "--execute", "--stream-json",
         "--mode", this.mode,
-        prompt,
-      ], { stdio: ["ignore", "pipe", "pipe"] });
+      ], { stdio: ["pipe", "pipe", "pipe"], env });
+
+      child.stdin.write(prompt);
+      child.stdin.end();
 
       let result = "";
       let errorOutput = "";
+      let stdoutBuffer = "";
 
       child.stdout.on("data", (chunk: Buffer) => {
-        for (const line of chunk.toString().split("\n")) {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split("\n");
+        // Keep the last element — it may be an incomplete line
+        stdoutBuffer = lines.pop()!;
+        for (const line of lines) {
           if (!line.trim()) continue;
           try {
             const msg = JSON.parse(line);
@@ -269,6 +329,22 @@ class AmpCliProvider implements AIProvider {
       });
 
       child.on("close", (code) => {
+        // Flush any remaining buffered data
+        if (stdoutBuffer.trim()) {
+          try {
+            const msg = JSON.parse(stdoutBuffer);
+            if (msg.type === "result") {
+              if (msg.is_error) {
+                errorOutput = msg.error || "AMP returned an error";
+              } else {
+                result = msg.result ?? "";
+              }
+            }
+          } catch {
+            // Non-JSON residual — ignore
+          }
+        }
+
         if (result) {
           resolve(result);
         } else if (errorOutput) {

@@ -57,4 +57,5 @@ export interface SCMProvider {
   getFileContent(filePath: string, pullRequestId: string): Promise<string>;
   applyRiskLabel?(pullRequestId: string, riskLevel: string, riskScore: number): Promise<void>;
   getPRState?(pullRequestId: string): Promise<PRState>;
+  getIssueComments?(pullRequestId: string): Promise<string[]>;
 }

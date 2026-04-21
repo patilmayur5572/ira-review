@@ -34,7 +34,7 @@ export async function resolveJiraCredentials(): Promise<JiraCredentials | null> 
     await config.update('jiraUrl', url, vscode.ConfigurationTarget.Global);
   }
 
-  // 2. JIRA Type — auto-detect from URL when possible
+  // 2. JIRA Type - auto-detect from URL when possible
   let type = config.get<string>('jiraType', '') as 'cloud' | 'server' | '';
   if (!type) {
     if (url.includes('atlassian.net')) {
@@ -67,7 +67,7 @@ export async function resolveJiraCredentials(): Promise<JiraCredentials | null> 
     await config.update('jiraEmail', email, vscode.ConfigurationTarget.Global);
   }
 
-  // 4. Token — with "Open Token Page" button
+  // 4. Token - with "Open Token Page" button
   let token = await auth.getJiraToken();
   if (!token) {
     const tokenPageUrl = type === 'cloud'

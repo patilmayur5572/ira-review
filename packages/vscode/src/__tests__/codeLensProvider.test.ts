@@ -33,7 +33,7 @@ describe('codeLensProvider', () => {
   });
 
   it('truncates long titles', () => {
-    const title = '🔍 IRA: CRITICAL — This is a very long message that exceeds the 80 character limit and should be truncated';
+    const title = '🔍 IRA: CRITICAL - This is a very long message that exceeds the 80 character limit and should be truncated';
     const truncated = title.length > 80 ? title.substring(0, 77) + '...' : title;
     expect(truncated.length).toBeLessThanOrEqual(80);
     expect(truncated.endsWith('...')).toBe(true);

@@ -1,6 +1,6 @@
 /**
  * Copyright (c) IRA - Intelligent Review Assistant
- * Centralized user-facing messages — warm, empowering tone.
+ * Centralized user-facing messages - warm, empowering tone.
  * Developer should feel progressive, valued, and smart.
  */
 
@@ -26,29 +26,20 @@ export async function getDevName(): Promise<string> {
   return cachedName;
 }
 
-/** Personalized prefix — capitalizes the next word when no name is available. */
+/** Personalized prefix - capitalizes the next word when no name is available. */
 function greet(name: string, nextWord: string): string {
   return name ? `${name}, ${nextWord}` : nextWord.charAt(0).toUpperCase() + nextWord.slice(1);
 }
 
 // ─── Success / Info ─────────────────────────────────────────
 
-export async function reviewFileSuccess(issueCount: number, filePath: string, rulesCount: number, sensitiveTag: string): Promise<string> {
-  const name = await getDevName();
-  const rulesNote = rulesCount > 0 ? ` (${rulesCount} team rules active)` : '';
-  if (issueCount === 0) {
-    return `${sensitiveTag}Clean code — nothing to flag in ${filePath} ✨${rulesNote}`;
-  }
-  return `${sensitiveTag}${greet(name, 'caught')} ${issueCount} issue${issueCount !== 1 ? 's' : ''} early in ${filePath} 👀${rulesNote}`;
-}
-
 export async function reviewPRSuccess(issueCount: number, riskLevel: string | undefined): Promise<string> {
   const name = await getDevName();
   const risk = riskLevel ?? 'N/A';
   if (issueCount === 0) {
-    return `${greet(name, 'PR')} looks clean — no issues found ✨ (Risk: ${risk})`;
+    return `${greet(name, 'PR')} looks clean - no issues found ✨ (Risk: ${risk})`;
   }
-  return `${greet(name, 'PR')} scanned — caught ${issueCount} issue${issueCount !== 1 ? 's' : ''} before review 🛡️ (Risk: ${risk})`;
+  return `${greet(name, 'PR')} scanned - caught ${issueCount} issue${issueCount !== 1 ? 's' : ''} before review 🛡️ (Risk: ${risk})`;
 }
 
 export function riskResult(icon: string, level: string, score: number, maxScore: number, sensitiveTag: string, detail: string): string {
@@ -56,30 +47,30 @@ export function riskResult(icon: string, level: string, score: number, maxScore:
     : level === 'HIGH' ? 'worth a second look'
     : level === 'MEDIUM' ? 'a few things to check'
     : 'looking good, safe to ship';
-  return `${icon} ${sensitiveTag}${level} risk — ${action} (${score}/${maxScore})${detail}`;
+  return `${icon} ${sensitiveTag}${level} risk - ${action} (${score}/${maxScore})${detail}`;
 }
 
 export function testGenSuccess(count: number, jiraKey: string): string {
-  return `Generated ${count} test case${count !== 1 ? 's' : ''} for ${jiraKey} — ready to plug in 🧪`;
+  return `Generated ${count} test case${count !== 1 ? 's' : ''} for ${jiraKey} - ready to plug in 🧪`;
 }
 
 export function testGenEmpty(jiraKey: string, parseWarning?: string): string {
   if (parseWarning) {
-    return `Couldn't extract test cases for ${jiraKey} — the AI response was in an unexpected format. Try again?`;
+    return `Couldn't extract test cases for ${jiraKey} - the AI response was in an unexpected format. Try again?`;
   }
-  return `No test gaps found for ${jiraKey} — AC coverage looks solid 👍`;
+  return `No test gaps found for ${jiraKey} - AC coverage looks solid 👍`;
 }
 
 export function rulesCreated(): string {
-  return 'Team rules file ready — customize and commit to share with your team 🤝';
+  return 'Team rules file ready - customize and commit to share with your team 🤝';
 }
 
 export function rulesAlreadyExist(): string {
-  return 'Rules file already exists — opening it for you';
+  return 'Rules file already exists - opening it for you';
 }
 
 export function fixApplied(canUndo: boolean): string {
-  return canUndo ? 'Fix applied — Ctrl+Z to undo if needed ✅' : 'Fix applied ✅';
+  return canUndo ? 'Fix applied - Ctrl+Z to undo if needed ✅' : 'Fix applied ✅';
 }
 
 export function signedIn(label: string): string {
@@ -87,7 +78,7 @@ export function signedIn(label: string): string {
 }
 
 export function signedOut(): string {
-  return 'Signed out — see you next time';
+  return 'Signed out - see you next time';
 }
 
 export function tokenSaved(provider: string): string {
@@ -95,150 +86,111 @@ export function tokenSaved(provider: string): string {
 }
 
 export function proActivated(): string {
-  return '🎉 Pro activated — all features unlocked!';
+  return '🎉 Pro activated - all features unlocked!';
 }
 
 export function proDeactivated(): string {
   return 'Pro license deactivated';
 }
 
-export async function acValidationSuccess(jiraKey: string, passCount: number, failCount: number): Promise<string> {
-  const name = await getDevName();
-  if (failCount === 0) {
-    return `${greet(name, 'all')} acceptance criteria passed for ${jiraKey} ✅`;
-  }
-  return `${jiraKey}: ${passCount} AC passed, ${failCount} need attention 📋`;
-}
-
-export function acAlreadyExists(jiraKey: string): string {
-  return `${jiraKey} already has acceptance criteria — no need to generate new ones`;
-}
-
 export function acAlreadyPosted(jiraKey: string): string {
-  return `IRA already posted AC suggestions on ${jiraKey} — check the comments`;
-}
-
-export function acSuggestSuccess(count: number, jiraKey: string): string {
-  return `Posted ${count} acceptance criteria to ${jiraKey} as a JIRA comment ✅`;
-}
-
-export function acInsufficientChanges(): string {
-  return 'Not enough code changes to generate meaningful acceptance criteria — keep coding!';
+  return `IRA already posted AC suggestions on ${jiraKey} - check the comments`;
 }
 
 // ─── Warnings ───────────────────────────────────────────────
 
-export function fileEmpty(): string {
-  return 'Nothing to review — this file is empty';
-}
-
-export function noAC(jiraKey: string): string {
-  return `No acceptance criteria found on ${jiraKey} — check the ticket or configure the AC custom field`;
-}
-
 export function noChanges(): string {
-  return 'No code changes found to validate against — commit some changes first';
+  return 'No code changes found to validate against - commit some changes first';
 }
 
 export function noDiff(): string {
-  return 'No diff found — make sure you have changes relative to the default branch';
+  return 'No diff found - make sure you have changes relative to the default branch';
+}
+
+export function prMerged(): string {
+  return 'This PR is already merged 🎉 - nice work! Use "local changes" mode to review current code instead';
+}
+
+export function prClosed(): string {
+  return 'This PR has been closed - open a new one or use "local changes" mode to keep going';
+}
+
+export function prDeclined(): string {
+  return 'This PR was declined - check the feedback and use "local changes" mode for your next iteration';
 }
 
 // ─── Errors ─────────────────────────────────────────────────
 
 export function noWorkspace(): string {
-  return 'No workspace folder open — open a project first';
+  return 'No workspace folder open - open a project first';
 }
 
 export function noActiveFile(): string {
-  return 'No file open — open a file to review';
+  return 'No file open - open a file to review';
 }
 
 export function reviewFailed(error: string): string {
-  return `Review didn't complete — ${error}`;
+  return `Review didn't complete - ${error}`;
 }
 
 export function testGenFailed(error: string): string {
-  return `Test generation didn't complete — ${error}`;
+  return `Test generation didn't complete - ${error}`;
 }
 
 export function riskFailed(error: string): string {
-  return `Risk calculation didn't complete — ${error}`;
-}
-
-export function acValidationFailed(error: string): string {
-  return `AC validation didn't complete — ${error}`;
+  return `Risk calculation didn't complete - ${error}`;
 }
 
 export function prDescFailed(error: string): string {
-  return `PR description didn't complete — ${error}`;
+  return `PR description didn't complete - ${error}`;
 }
 
 export function fixFailed(error: string): string {
-  return `Fix generation didn't complete — ${error}`;
+  return `Fix generation didn't complete - ${error}`;
 }
 
 export function authRequired(): string {
-  return 'Sign in first — run "IRA: Sign In" from the command palette';
+  return 'Sign in first - run "IRA: Sign In" from the command palette';
 }
 
 export function authCancelled(provider: string): string {
-  return `${provider} sign-in was cancelled — try again when ready`;
+  return `${provider} sign-in was cancelled - try again when ready`;
 }
 
 export function noPRNumber(): string {
-  return 'Couldn\'t detect a PR number — enter it manually';
+  return 'Couldn\'t detect a PR number - enter it manually';
 }
 
 export function couldNotOpenFile(filePath: string): string {
-  return `Couldn't open ${filePath} — check the file path`;
+  return `Couldn't open ${filePath} - check the file path`;
 }
 
 // ─── Progress Titles ────────────────────────────────────────
 
 export const progress = {
-  reviewFile: 'Reviewing file…',
   reviewPR: 'IRA Review',
-  generateTests: (framework: string) => `Generating ${framework} test cases…`,
-  calculateRisk: 'Calculating risk score…',
-  validateAC: (key: string) => `Checking ${key} acceptance criteria…`,
-  generatePRDesc: 'Crafting PR description…',
-  suggestAC: (key: string) => `Generating acceptance criteria for ${key}…`,
-  autoReview: '$(sync~spin) Auto-reviewing…',
-  generatingFix: '$(sync~spin) Generating fix…',
-  pullingModel: (model: string) => `Pulling ${model}… this may take a few minutes`,
+  generateTests: (framework: string) => `Generating ${framework} test cases`,
+  calculateRisk: 'Calculating risk score',
+  generatePRDesc: 'Crafting your PR description',
+  autoReview: '$(sync~spin) IRA is reviewing',
+  generatingFix: '$(sync~spin) Generating fix',
+  pullingModel: (model: string) => `Pulling ${model}, this may take a few minutes`,
 };
 
 // ─── Step-based Progress Messages ───────────────────────────
 
 export const steps = {
   // reviewPR steps
-  prStarting: 'Getting everything ready…',
-  prAuthenticated: 'Authenticated — fetching your code changes…',
-  prDiffLoaded: (fileCount: number) => `Found ${fileCount} changed file${fileCount !== 1 ? 's' : ''} — AI is reviewing your code…`,
-  prFileReview: (fileName: string, current: number, total: number) => `Reviewing ${fileName} (${current}/${total})…`,
-  prHighlighting: 'Review complete — highlighting issues for you…',
-  prNotifying: 'Sending team notifications…',
-
-  // reviewFile steps
-  fileDetecting: 'Detecting project context…',
-  fileReviewing: 'AI is reviewing your code…',
-
-  // validateAC steps
-  acFetchingTicket: 'Loading JIRA ticket…',
-  acFetchingDiff: 'Fetching code changes…',
-  acValidating: 'AI is validating acceptance criteria…',
-  acPosting: (prNum: string) => `Posting results to PR #${prNum}…`,
-
-  // suggestAC steps
-  acTicketLoaded: 'Ticket loaded — reading your code changes…',
-  acGathered: 'Gathered context — generating acceptance criteria…',
-  acPostingToJira: 'ACs ready — posting to JIRA…',
-  acOpening: 'Posted — opening preview…',
+  prStarting: 'Setting things up for you',
+  prAuthenticated: 'Authenticated, fetching your code changes',
+  prDiffLoaded: (fileCount: number) => `Found ${fileCount} changed file${fileCount !== 1 ? 's' : ''}, IRA is reviewing`,
+  prFileReview: (fileName: string, current: number, total: number) => `Reviewing ${fileName} (${current}/${total})`,
+  prHighlighting: 'Almost done, highlighting results',
+  prNotifying: 'Sending team notifications',
 
   // local diff steps
-  localReadingDiff: 'Reading your local changes…',
-  localReviewingFiles: (fileCount: number) => `Reviewing ${fileCount} changed file${fileCount !== 1 ? 's' : ''} — this won't take long…`,
+  localReadingDiff: 'Reading your local changes',
+  localReviewingFiles: (fileCount: number) => `Reviewing ${fileCount} changed file${fileCount !== 1 ? 's' : ''}, won't take long`,
 };
 
 // ─── Prompts ────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import './setup';
 import * as vscode from 'vscode';
 import { parseStandaloneResponse, resolveIssueLocations, createAIProvider, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from 'ira-review';
 
-// Mock child_process — exec for git rev-parse
+// Mock child_process - exec for git rev-parse
 vi.mock('child_process', () => ({
   exec: vi.fn((cmd: string, opts: any, cb: Function) => {
     if (cmd.includes('rev-parse --show-toplevel')) {

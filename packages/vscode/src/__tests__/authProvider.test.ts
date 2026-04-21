@@ -62,7 +62,7 @@ describe('AuthProvider', () => {
     expect(AuthProvider.getInstance()).toBe(instance);
   });
 
-  // ─── GitHub — silent OAuth ──────────────────────────────────────
+  // ─── GitHub - silent OAuth ──────────────────────────────────────
 
   it('should return GitHub session from VS Code OAuth (silent)', async () => {
     const ctx = createFakeContext();
@@ -271,7 +271,7 @@ describe('AuthProvider', () => {
     const session = await auth.signIn('github');
     expect(session).toBeNull();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      'GitHub sign-in was cancelled — try again when ready',
+      'GitHub sign-in was cancelled - try again when ready',
     );
   });
 
@@ -320,7 +320,7 @@ describe('AuthProvider', () => {
     expect(ctx.secrets.delete).toHaveBeenCalledWith('ira-jira-token');
     expect(ctx.secrets.delete).toHaveBeenCalledWith('ira-ai-api-key');
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Signed out — see you next time',
+      'Signed out - see you next time',
     );
 
     // After sign out, getSession should not return cached value

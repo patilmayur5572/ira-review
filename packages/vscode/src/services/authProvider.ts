@@ -1,6 +1,6 @@
 /**
  * Copyright (c) IRA - Intelligent Review Assistant
- * AuthProvider — Centralized OAuth authentication for GitHub / Bitbucket
+ * AuthProvider - Centralized OAuth authentication for GitHub / Bitbucket
  *
  * Uses VS Code's built-in AuthenticationProvider API so users click
  * "Sign in with GitHub" instead of pasting PATs.
@@ -105,8 +105,15 @@ export class AuthProvider implements vscode.Disposable {
    * Returns the session or null if the user declines to authenticate.
    */
   async resolveScmSession(workspaceRoot: string): Promise<ScmSession | null> {
+    const config = vscode.workspace.getConfiguration('ira');
     let scmProvider: 'github' | 'bitbucket' =
-      vscode.workspace.getConfiguration('ira').get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
+      config.get<string>('scmProvider', 'github') as 'github' | 'bitbucket';
+
+    // If bitbucketUrl is configured, treat as Bitbucket regardless of scmProvider setting
+    const bitbucketUrl = config.get<string>('bitbucketUrl', '');
+    if (bitbucketUrl) {
+      scmProvider = 'bitbucket';
+    }
 
     // Resolve actual git root from active editor (workspaceRoot might be a parent folder)
     let gitCwd = workspaceRoot;
@@ -119,15 +126,17 @@ export class AuthProvider implements vscode.Disposable {
       }
     } catch { /* ignore */ }
 
-    // Auto-detect from git remote
-    try {
-      const remoteUrl = await execShell('git remote get-url origin', gitCwd);
-      if (remoteUrl.includes('bitbucket') || remoteUrl.includes('/scm/')) {
-        scmProvider = 'bitbucket';
+    // Auto-detect from git remote (only if not already resolved via bitbucketUrl)
+    if (!bitbucketUrl) {
+      try {
+        const remoteUrl = await execShell('git remote get-url origin', gitCwd);
+        if (remoteUrl.includes('bitbucket') || remoteUrl.includes('/scm/')) {
+          scmProvider = 'bitbucket';
+        }
+        console.log(`IRA: Detected SCM=${scmProvider} from remote: ${remoteUrl.slice(0, 80)}`);
+      } catch (err) {
+        console.log(`IRA: Could not detect SCM from git remote (cwd=${gitCwd}): ${err instanceof Error ? err.message : err}`);
       }
-      console.log(`IRA: Detected SCM=${scmProvider} from remote: ${remoteUrl.slice(0, 80)}`);
-    } catch (err) {
-      console.log(`IRA: Could not detect SCM from git remote (cwd=${gitCwd}): ${err instanceof Error ? err.message : err}`);
     }
 
     let session = await this.getSession(scmProvider);

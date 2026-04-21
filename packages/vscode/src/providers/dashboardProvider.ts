@@ -94,7 +94,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
       const dirMap = {
         improving:    { icon: '↓', label: 'Improving', desc: 'Fewer issues in recent PRs vs earlier ones' },
         stable:       { icon: '→', label: 'Stable', desc: 'Issue count is holding steady' },
-        worsening:    { icon: '↑', label: 'Needs Attention', desc: 'More issues in recent PRs — review hotspots below' },
+        worsening:    { icon: '↑', label: 'Needs Attention', desc: 'More issues in recent PRs - review hotspots below' },
         insufficient: { icon: '—', label: 'Building History', desc: 'Need 6+ reviews to show direction' },
       };
       const dir = dirMap[direction] || dirMap.insufficient;
@@ -122,7 +122,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
         html += '<div class="section"><div class="section-title">Most Recurring Rule</div><div class="card"><div class="rule-card">';
         html += '<div class="rule-count">' + topRule.count + '</div>';
         html += '<div><div class="rule-name">' + esc(topRule.rule) + '</div>';
-        html += '<div class="rule-hint">times across all reviews — consider a team-wide fix</div></div>';
+        html += '<div class="rule-hint">times across all reviews - consider a team-wide fix</div></div>';
         html += '</div></div></div>';
       }
 

@@ -23,7 +23,7 @@ export interface IraRulesFile {
 }
 
 const VALID_SEVERITIES = ['BLOCKER', 'CRITICAL', 'MAJOR', 'MINOR'] as const;
-const MAX_RULES = 50;
+const MAX_RULES = 100;
 
 function loadRawRulesFile(cwd?: string): Record<string, unknown> | null {
   const dir = cwd ?? process.cwd();
@@ -55,7 +55,7 @@ export function loadRulesFile(cwd?: string): IraRule[] {
 
   if (!parsed || !Array.isArray(parsed.rules)) {
     if (parsed) {
-      console.warn('IRA: .ira-rules.json has syntax errors. Team rules will not be enforced.');
+      console.warn('IRA: .ira-rules.json is invalid. Expected { "rules": [...] } with a flat array. Team rules will not be enforced.');
     }
     return [];
   }
@@ -94,7 +94,7 @@ export function loadRulesFile(cwd?: string): IraRule[] {
   }
 
   if (valid.length > MAX_RULES) {
-    console.warn('IRA: .ira-rules.json has more than 50 rules. Only the first 50 will be enforced. Tip: Move deterministic rules to ESLint and keep only nuanced, context-dependent rules in IRA.');
+    console.warn(`IRA: .ira-rules.json has more than ${MAX_RULES} rules. Only the first ${MAX_RULES} will be enforced. Tip: Move deterministic rules to ESLint and keep only nuanced, context-dependent rules in IRA.`);
     return valid.slice(0, MAX_RULES);
   }
 

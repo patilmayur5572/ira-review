@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { generatePRDescription } from '../commands/generatePRDescription';
 import { AuthProvider } from '../services/authProvider';
 
-// Mock child_process — execGit uses cp.execFile(cmd, args, opts, cb)
+// Mock child_process - execGit uses cp.execFile(cmd, args, opts, cb)
 vi.mock('child_process', () => ({
   execFile: vi.fn((cmd: string, args: string[], opts: any, cb: Function) => {
     const fullCmd = [cmd, ...args].join(' ');
@@ -53,7 +53,7 @@ describe('generatePRDescription', () => {
   it('should show error if no workspace', async () => {
     (vscode.workspace as any).workspaceFolders = undefined;
     await generatePRDescription();
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder open — open a project first');
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder open - open a project first');
   });
 
   it('should show quick pick with two options', async () => {
@@ -136,7 +136,7 @@ describe('generatePRDescription', () => {
     });
 
     await generatePRDescription();
-    // PR number prompt happens before progress — cancelling silently returns
+    // PR number prompt happens before progress - cancelling silently returns
     expect(vscode.window.showInputBox).toHaveBeenCalled();
     expect(vscode.window.withProgress).not.toHaveBeenCalled();
   });

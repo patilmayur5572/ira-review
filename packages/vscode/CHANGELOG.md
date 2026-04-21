@@ -2,12 +2,38 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.0.0] — 2025-04-21
+
+### Breaking Changes
+
+- **Unified Review Command** — Consolidated all review commands into a single `reviewPR` command that handles both PR and local diff modes
+- **AC Validation Rework** — `hasStructuredAC` heuristic now auto-switches between validating existing ACs (Given/When/Then, numbered lists) and generating new ACs from the diff (unstructured test step tables or empty fields)
+- **Issue-Type Aware Validation** — AC validation logic is now issue-type aware; bug tickets focus on Expected vs Actual result gaps
+
+### Added
+
+- **JIRA Enrichment Service** — Shared service (`jiraEnrichment.ts`) detects tickets from branch names and handles AC validation or generation
+- **Webview Results Panel** — New results panel with Post to JIRA button for sharing suggested ACs
+- **AC Generation from Diff** — When a JIRA ticket lacks structured criteria, IRA generates ACs from the code diff (threshold lowered to 3 changed lines including deletions)
+- **Generate PR Description + JIRA Intelligence** — PR description command now uses the same JIRA intelligence for AC generation
+
+### Improved
+
+- **Rule Limit** — Maximum custom rules in `.ira-rules.json` increased from 50 to 100
+- **Local Review Performance** — Faster local diff reviews for small bug fixes
+- **Error Handling** — User-friendly messages when not in a git repo or when branches are missing
+- **AI Response Cleanup** — `cleanDescription` helper strips generic prefixes (CRITERION_1) and trailing MET/NOT_MET status; defensive parenthesis-balancing fix in webview prevents truncated AC descriptions
+
+### Fixed
+
+- AC descriptions truncation caused by unbalanced parentheses in AI responses
+- Prompt improvements to prevent AI from cutting off AC text
+
 ## [1.0.1] - 2025-04-04
 
 ### Added
 
 - **Generate Tests** - generate test cases from JIRA acceptance criteria in 8 frameworks (Cmd+Shift+P → IRA: Generate Tests)
-- **Review Current File** - review the currently open file without needing a PR (Cmd+Shift+P → IRA: Review Current File)
 
 ### Fixed
 
@@ -23,7 +49,7 @@ All notable changes to the IRA VS Code extension will be documented in this file
 - **One-Click "Apply Fix"** — CodeLens action to generate and apply AI fixes
   - Confirmation dialog before applying changes
   - Full undo support (Ctrl+Z)
-- **Generate PR Description** — AI-powered PR description from diff (free for all users)
+- **Generate PR Description** — AI-powered PR description from diff
   - JIRA ticket auto-detection from branch name (e.g. `feature/PROJ-123-…`)
   - Supports both existing PRs and local `git diff main...HEAD`
 - **Review History** — Browse past review results in a dedicated tree view

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAIProvider, parseAIResponse } from "../aiClient.js";
+import { createAIProvider, parseAIResponse, AmpCliProvider, isAmpCliAvailable } from "../aiClient.js";
 import type { AIConfig } from "../../types/config.js";
 
 vi.mock("openai", () => {
@@ -207,6 +207,54 @@ describe("parseAIResponse", () => {
     const result = parseAIResponse(content);
     // Should use the full content as explanation since no explicit explanation field
     expect(result.explanation).toContain("criteria");
+  });
+});
+
+describe("createAIProvider - AMP", () => {
+  it("creates an AMP provider", () => {
+    const provider = createAIProvider({
+      provider: "amp",
+      apiKey: "",
+    });
+    expect(provider).toBeDefined();
+    expect(provider.review).toBeTypeOf("function");
+  });
+
+  it("creates an AMP provider with custom mode via model field", () => {
+    const provider = createAIProvider({
+      provider: "amp",
+      apiKey: "",
+      model: "deep",
+    });
+    expect(provider).toBeInstanceOf(AmpCliProvider);
+  });
+});
+
+describe("AmpCliProvider", () => {
+  it("defaults to smart mode", () => {
+    const provider = new AmpCliProvider();
+    expect(provider).toBeDefined();
+  });
+
+  it("accepts explicit mode", () => {
+    const rush = new AmpCliProvider("rush");
+    const deep = new AmpCliProvider("deep");
+    const smart = new AmpCliProvider("smart");
+    expect(rush).toBeDefined();
+    expect(deep).toBeDefined();
+    expect(smart).toBeDefined();
+  });
+
+  it("exposes rawReview as public method", () => {
+    const provider = new AmpCliProvider();
+    expect(provider.rawReview).toBeTypeOf("function");
+  });
+});
+
+describe("isAmpCliAvailable", () => {
+  it("returns a boolean", () => {
+    const result = isAmpCliAvailable();
+    expect(typeof result).toBe("boolean");
   });
 });
 

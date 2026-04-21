@@ -64,6 +64,21 @@ export class GitHubClient implements SCMProvider {
     });
   }
 
+  async getIssueComments(pullRequestId: string): Promise<string[]> {
+    const bodies: string[] = [];
+    let page = 1;
+    while (true) {
+      const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/comments?per_page=100&page=${page}`;
+      const response = await fetchWithTimeout(url, { headers: this.headers });
+      if (!response.ok) break;
+      const comments = (await response.json()) as Array<{ body: string }>;
+      for (const c of comments) bodies.push(c.body);
+      if (comments.length < 100) break;
+      page++;
+    }
+    return bodies;
+  }
+
   async getPRState(pullRequestId: string): Promise<PRState> {
     const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls/${pullRequestId}`;
     const response = await fetchWithTimeout(url, { headers: this.headers });

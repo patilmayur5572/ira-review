@@ -1,6 +1,6 @@
 /**
- * IRA — Intelligent Review Assistant
- * Copilot AI Provider — uses VS Code's Language Model API
+ * IRA - Intelligent Review Assistant
+ * Copilot AI Provider - uses VS Code's Language Model API
  * Zero config: works with the user's existing Copilot subscription
  */
 

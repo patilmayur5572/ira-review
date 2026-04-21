@@ -105,6 +105,20 @@ export class BitbucketClient implements SCMProvider {
     });
   }
 
+  async getIssueComments(pullRequestId: string): Promise<string[]> {
+    const bodies: string[] = [];
+    let url: string | undefined =
+      `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/comments?pagelen=100`;
+    while (url) {
+      const response = await fetchWithTimeout(url, { headers: this.headers });
+      if (!response.ok) break;
+      const data = (await response.json()) as { values: Array<{ content: { raw: string } }>; next?: string };
+      for (const c of data.values) bodies.push(c.content.raw);
+      url = data.next;
+    }
+    return bodies;
+  }
+
   async getFileContent(
     filePath: string,
     pullRequestId: string,

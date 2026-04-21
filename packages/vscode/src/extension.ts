@@ -7,10 +7,7 @@ import * as vscode from 'vscode';
 import { reviewPR } from './commands/reviewPR';
 import { generatePRDescription } from './commands/generatePRDescription';
 import { generateTests } from './commands/generateTests';
-import { reviewFile } from './commands/reviewFile';
 
-import { validateJiraAC } from './commands/validateJiraAC';
-import { suggestAC } from './commands/suggestAC';
 import { createStatusBar, updateStatusBar } from './providers/statusBarProvider';
 import { removeDiagnostic } from './providers/diagnosticsProvider';
 import { IraIssuesProvider } from './providers/treeViewProvider';
@@ -23,6 +20,68 @@ import { DashboardProvider } from './providers/dashboardProvider';
 import { setupOllama } from './services/ollamaSetup';
 import type { ReviewResult } from 'ira-review';
 import * as msg from './utils/messages';
+
+/** Format an IRA issue comment as markdown for posting to SCM. */
+function formatIssueComment(comment: { filePath: string; line: number; rule: string; severity: string; message: string; aiReview: { explanation: string; impact: string; suggestedFix: string } }): string {
+  const location = comment.line > 0 ? '' : `\n**File:** \`${comment.filePath}\`\n`;
+  return [
+    `🔍 **IRA Review** - \`${comment.rule}\` (${comment.severity})`,
+    location,
+    `> ${comment.message}`,
+    '',
+    `**Explanation:** ${comment.aiReview.explanation}`,
+    '',
+    `**Impact:** ${comment.aiReview.impact}`,
+    '',
+    `**Suggested Fix:**`,
+    comment.aiReview.suggestedFix,
+  ].join('\n');
+}
+
+/** Detect whether this is a Bitbucket Server/DC instance (vs Cloud). */
+function isBitbucketServer(ctx: PRContext): boolean {
+  return ctx.scmProvider === 'bitbucket' && !!ctx.bitbucketUrl;
+}
+
+/** Post a comment to Bitbucket Server REST API (Cloud uses BitbucketClient). */
+async function postBBServerComment(ctx: PRContext, body: string, anchor?: { path: string; line: number }): Promise<void> {
+  const url = `${ctx.bitbucketUrl!.replace(/\/+$/, '')}/rest/api/1.0/projects/${ctx.owner}/repos/${ctx.repo}/pull-requests/${ctx.prNumber}/comments`;
+  const payload: Record<string, unknown> = { text: body };
+  if (anchor && anchor.line > 0) {
+    payload.anchor = { path: anchor.path, line: anchor.line, lineType: 'ADDED' };
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${ctx.scmToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    // If inline fails (line not in diff), retry as general comment
+    if (response.status === 400 && anchor) {
+      return postBBServerComment(ctx, body);
+    }
+    const text = await response.text();
+    throw new Error(`Bitbucket Server API error (${response.status}): ${text.slice(0, 200)}`);
+  }
+}
+
+/** Fetch comments from Bitbucket Server REST API. */
+async function getBBServerComments(ctx: PRContext): Promise<string[]> {
+  const bodies: string[] = [];
+  let start = 0;
+  while (true) {
+    const url = `${ctx.bitbucketUrl!.replace(/\/+$/, '')}/rest/api/1.0/projects/${ctx.owner}/repos/${ctx.repo}/pull-requests/${ctx.prNumber}/comments?start=${start}&limit=100`;
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${ctx.scmToken}`, 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) break;
+    const data = (await response.json()) as { values: Array<{ text: string }>; isLastPage: boolean; nextPageStart?: number };
+    for (const c of data.values) bodies.push(c.text);
+    if (data.isLastPage) break;
+    start = data.nextPageStart ?? start + 100;
+  }
+  return bodies;
+}
 
 let lastResult: ReviewResult | null = null;
 
@@ -74,12 +133,12 @@ export function activate(context: vscode.ExtensionContext): void {
   vscode.window.registerTreeDataProvider('ira-history', historyProvider);
   vscode.window.registerWebviewViewProvider(DashboardProvider.viewType, dashboardProvider);
 
-  // First-run welcome — show once per install
+  // First-run welcome - show once per install
   const hasSeenWelcome = context.globalState.get<boolean>('ira.welcomeShown');
   if (!hasSeenWelcome) {
     context.globalState.update('ira.welcomeShown', true);
     vscode.window.showInformationMessage(
-      'Welcome to IRA — your AI code review assistant 👋',
+      'Welcome to IRA - your AI code review assistant 👋',
       { modal: true },
       'Explore Commands',
     ).then((action) => {
@@ -106,13 +165,7 @@ export function activate(context: vscode.ExtensionContext): void {
       reviewPR(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider)
     ),
     vscode.commands.registerCommand('ira.generatePRDescription', () => generatePRDescription()),
-    vscode.commands.registerCommand('ira.reviewFile', () =>
-      reviewFile(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider)
-    ),
     vscode.commands.registerCommand('ira.generateTests', () => generateTests()),
-    vscode.commands.registerCommand('ira.validateJiraAC', () => validateJiraAC()),
-    vscode.commands.registerCommand('ira.suggestAC', () => suggestAC()),
-
     vscode.commands.registerCommand('ira.configure', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', 'ira')
     ),
@@ -186,7 +239,7 @@ export function activate(context: vscode.ExtensionContext): void {
       } else if (repos.length === 1) {
         workspaceRoot = repos[0];
       } else {
-        // Multiple repos — let user pick
+        // Multiple repos - let user pick
         const pick = await vscode.window.showQuickPick(
           repos.map(r => ({ label: path.basename(r), description: r, repoPath: r })),
           { placeHolder: msg.prompts.pickProject },
@@ -206,7 +259,7 @@ export function activate(context: vscode.ExtensionContext): void {
         rules: [
           {
             id: "no-console-log",
-            message: "Avoid console.log in production code — use a structured logger instead",
+            message: "Avoid console.log in production code - use a structured logger instead",
             severity: "MAJOR",
             bad: "console.log('user data:', user);",
             good: "logger.info('User loaded', { userId: user.id });",
@@ -241,13 +294,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('ira.postIssueToPR', async (comment) => {
       const ctx = getPRContext();
-      if (!ctx) { vscode.window.showWarningMessage('No active PR context — run "Review PR" first.'); return; }
+      if (!ctx) { vscode.window.showWarningMessage('No active PR context - run "Review PR" first.'); return; }
       try {
-        const { GitHubClient, BitbucketClient } = await import('ira-review');
-        const scmClient = ctx.scmProvider === 'github'
-          ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
-          : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken, ...(ctx.bitbucketUrl && { baseUrl: ctx.bitbucketUrl }) } as any);
-        await scmClient.postComment(comment, ctx.prNumber);
+        if (isBitbucketServer(ctx)) {
+          const formatted = formatIssueComment(comment);
+          await postBBServerComment(ctx, formatted, { path: comment.filePath, line: comment.line });
+        } else {
+          const { GitHubClient, BitbucketClient } = await import('ira-review');
+          const scmClient = ctx.scmProvider === 'github'
+            ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+            : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken } as any);
+          await scmClient.postComment(comment, ctx.prNumber);
+        }
         vscode.window.showInformationMessage(`Posted issue to PR #${ctx.prNumber} ✅`);
       } catch (err) {
         vscode.window.showErrorMessage(`Failed to post issue: ${err instanceof Error ? err.message : err}`);
@@ -258,14 +316,22 @@ export function activate(context: vscode.ExtensionContext): void {
       const result = getLastResult();
       if (!ctx || !result || result.comments.length === 0) return;
       try {
-        const { GitHubClient, BitbucketClient } = await import('ira-review');
-        const scmClient = ctx.scmProvider === 'github'
-          ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
-          : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken, ...(ctx.bitbucketUrl && { baseUrl: ctx.bitbucketUrl }) } as any);
         let posted = 0;
-        for (const comment of result.comments) {
-          await scmClient.postComment(comment, ctx.prNumber);
-          posted++;
+        if (isBitbucketServer(ctx)) {
+          for (const comment of result.comments) {
+            const formatted = formatIssueComment(comment);
+            await postBBServerComment(ctx, formatted, { path: comment.filePath, line: comment.line });
+            posted++;
+          }
+        } else {
+          const { GitHubClient, BitbucketClient } = await import('ira-review');
+          const scmClient = ctx.scmProvider === 'github'
+            ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+            : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken } as any);
+          for (const comment of result.comments) {
+            await scmClient.postComment(comment, ctx.prNumber);
+            posted++;
+          }
         }
         vscode.window.showInformationMessage(`Posted ${posted} issue${posted !== 1 ? 's' : ''} to PR #${ctx.prNumber} ✅`);
       } catch (err) {
@@ -277,15 +343,48 @@ export function activate(context: vscode.ExtensionContext): void {
       const result = getLastResult();
       if (!ctx || !result?.acceptanceValidation) return;
       try {
-        const { GitHubClient, BitbucketClient } = await import('ira-review');
-        const scmClient = ctx.scmProvider === 'github'
-          ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
-          : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken, ...(ctx.bitbucketUrl && { baseUrl: ctx.bitbucketUrl }) } as any);
+        const { openMarkdownPreview } = await import('./utils/markdownPreview');
         const av = result.acceptanceValidation;
         const rows = av.criteria.map(c => `| ${c.met ? '✅' : '❌'} | ${c.description} | ${c.evidence} |`).join('\n');
         const passCount = av.criteria.filter(c => c.met).length;
-        const summary = `# JIRA AC Validation — ${av.jiraKey}\n\n**${av.summary}**\n\n## Result: ${passCount}/${av.criteria.length} criteria met ${av.overallPass ? '✅' : '❌'}\n\n| Status | Criteria | Evidence |\n|--------|----------|----------|\n${rows}\n\n---\n*Validated by [IRA Review](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)*`;
-        await scmClient.postSummary(summary, ctx.prNumber);
+        const summary = `# JIRA AC Validation - ${av.jiraKey}\n\n**${av.summary}**\n\n## Result: ${passCount}/${av.criteria.length} criteria met ${av.overallPass ? '✅' : '❌'}\n\n| Status | Criteria | Evidence |\n|--------|----------|----------|\n${rows}\n\n---\n*Validated by [IRA Review](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)*`;
+
+        // Check if IRA already posted AC validation on this PR
+        try {
+          const existingComments = isBitbucketServer(ctx)
+            ? await getBBServerComments(ctx)
+            : await (async () => {
+                const { GitHubClient, BitbucketClient } = await import('ira-review');
+                const scmClient = ctx.scmProvider === 'github'
+                  ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+                  : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken } as any);
+                return scmClient.getIssueComments(ctx.prNumber);
+              })();
+          const alreadyPosted = existingComments.some((body: string) =>
+            body.includes('JIRA AC Validation') && body.includes(av.jiraKey));
+          if (alreadyPosted) {
+            const overwrite = await vscode.window.showWarningMessage(
+              msg.acAlreadyPosted(av.jiraKey),
+              'Post Again', 'Cancel',
+            );
+            if (overwrite !== 'Post Again') return;
+          }
+        } catch {
+          // Dedup check failed - continue with posting
+        }
+
+        // Show preview of what will be posted
+        await openMarkdownPreview(summary, `ac-validation-${av.jiraKey}`);
+
+        if (isBitbucketServer(ctx)) {
+          await postBBServerComment(ctx, summary);
+        } else {
+          const { GitHubClient, BitbucketClient } = await import('ira-review');
+          const scmClient = ctx.scmProvider === 'github'
+            ? new GitHubClient({ owner: ctx.owner, repo: ctx.repo, token: ctx.scmToken, ...(ctx.baseUrl && { baseUrl: ctx.baseUrl }) } as any)
+            : new BitbucketClient({ workspace: ctx.owner, repoSlug: ctx.repo, token: ctx.scmToken } as any);
+          await scmClient.postSummary(summary, ctx.prNumber);
+        }
         vscode.window.showInformationMessage(`AC validation posted to PR #${ctx.prNumber} ✅`);
       } catch (err) {
         vscode.window.showErrorMessage(`Failed to post AC validation: ${err instanceof Error ? err.message : err}`);
