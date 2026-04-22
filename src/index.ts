@@ -24,6 +24,7 @@ export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, extractVal
 export { BitbucketClient } from "./scm/bitbucket.js";
 export { GitHubClient } from "./scm/github.js";
 export { CommentTracker, deduplicateKey } from "./scm/commentTracker.js";
+export type { BitbucketServerConfig } from "./scm/commentTracker.js";
 
 // Integrations
 export { JiraClient } from "./integrations/jiraClient.js";

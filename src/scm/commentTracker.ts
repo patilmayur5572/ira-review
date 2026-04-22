@@ -22,22 +22,34 @@ interface GitHubComment {
   line?: number | null;
 }
 
+/** Config for Bitbucket Server/Data Center (uses /rest/api/1.0 endpoints). */
+export interface BitbucketServerConfig {
+  baseUrl: string;
+  token: string;
+  project: string;
+  repoSlug: string;
+}
+
 export class CommentTracker {
-  private readonly provider: "bitbucket" | "github";
+  private readonly provider: "bitbucket" | "github" | "bitbucket-server";
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
-  // Bitbucket
+  // Bitbucket Cloud
   private readonly workspace?: string;
   private readonly repoSlug?: string;
   // GitHub
   private readonly owner?: string;
   private readonly repo?: string;
+  // Bitbucket Server
+  private readonly project?: string;
+  private readonly bbServerRepoSlug?: string;
 
   constructor(config: BitbucketConfig, provider?: "bitbucket");
   constructor(config: GitHubConfig, provider: "github");
+  constructor(config: BitbucketServerConfig, provider: "bitbucket-server");
   constructor(
-    config: BitbucketConfig | GitHubConfig,
-    provider: "bitbucket" | "github" = "bitbucket",
+    config: BitbucketConfig | GitHubConfig | BitbucketServerConfig,
+    provider: "bitbucket" | "github" | "bitbucket-server" = "bitbucket",
   ) {
     this.provider = provider;
 
@@ -49,6 +61,15 @@ export class CommentTracker {
       this.headers = {
         Authorization: `Bearer ${gh.token}`,
         Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
+      };
+    } else if (provider === "bitbucket-server") {
+      const bbs = config as BitbucketServerConfig;
+      this.baseUrl = bbs.baseUrl.replace(/\/+$/, "");
+      this.project = bbs.project;
+      this.bbServerRepoSlug = bbs.repoSlug;
+      this.headers = {
+        Authorization: `Bearer ${bbs.token}`,
         "Content-Type": "application/json",
       };
     } else {
@@ -66,6 +87,9 @@ export class CommentTracker {
   async getExistingIraComments(pullRequestId: string): Promise<Set<string>> {
     if (this.provider === "github") {
       return this.getGitHubIraComments(pullRequestId);
+    }
+    if (this.provider === "bitbucket-server") {
+      return this.getBitbucketServerIraComments(pullRequestId);
     }
     return this.getBitbucketIraComments(pullRequestId);
   }
@@ -143,6 +167,46 @@ export class CommentTracker {
     }
 
     return keys;
+  }
+
+  private async getBitbucketServerIraComments(pullRequestId: string): Promise<Set<string>> {
+    const keys = new Set<string>();
+    let start = 0;
+
+    while (true) {
+      const url = `${this.baseUrl}/rest/api/1.0/projects/${this.project}/repos/${this.bbServerRepoSlug}/pull-requests/${pullRequestId}/comments?start=${start}&limit=100`;
+      const data = await this.fetchBitbucketServerPage(url);
+
+      for (const comment of data.values) {
+        if (!comment.text.includes(IRA_MARKER)) continue;
+
+        const meta = comment.text.match(IRA_META_RE);
+        if (meta) {
+          keys.add(`${meta[1]}:${meta[2]}:${meta[3]}`);
+        }
+      }
+
+      if (data.isLastPage) break;
+      start = data.nextPageStart ?? start + 100;
+    }
+
+    return keys;
+  }
+
+  private async fetchBitbucketServerPage(url: string): Promise<{ values: Array<{ text: string }>; isLastPage: boolean; nextPageStart?: number }> {
+    return withRetry(async () => {
+      const response = await fetchWithTimeout(url, { headers: this.headers });
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, body, 'Bitbucket Server'),
+          response.status,
+        );
+      }
+
+      return (await response.json()) as { values: Array<{ text: string }>; isLastPage: boolean; nextPageStart?: number };
+    });
   }
 
   private async fetchBitbucketPage(url: string): Promise<BitbucketCommentsResponse> {

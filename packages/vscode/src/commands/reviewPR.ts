@@ -25,6 +25,7 @@ import { BitbucketServerDiffResponse, convertBBServerDiffToUnified, parseDiffByF
 import { enrichWithJira, postACsToJira } from '../services/jiraEnrichment';
 import type { JiraEnrichmentResult } from '../services/jiraEnrichment';
 import { showReviewResultsPanel } from '../providers/reviewResultsPanel';
+import type { PostToSCMCallback } from '../providers/reviewResultsPanel';
 
 export async function reviewPR(
   context: vscode.ExtensionContext,
@@ -246,7 +247,7 @@ export async function reviewPR(
             }
           }
 
-          progress.report({ message: msg.steps.fileReviewing });
+          progress.report({ message: msg.steps.prHighlighting });
           const engine = new ReviewEngine(iraConfig);
           result = await engine.run();
           if (token.isCancellationRequested) { vscode.window.showInformationMessage('IRA: Operation cancelled.'); return; }
@@ -262,7 +263,53 @@ export async function reviewPR(
           const commentBody = formatACsForJiraComment(acGen, 'pr', branch || null);
           return postACsToJira(config, acGen.jiraKey, commentBody);
         } : undefined;
-        showReviewResultsPanel(result, jiraPostCallback);
+
+        // Build SCM bulk-post callback when we have a PR number
+        let scmCallback: PostToSCMCallback | undefined;
+        if (prNumber && result.totalIssues > 0) {
+          const { CommentTracker, deduplicateKey } = await import('ira-review');
+          const bbUrl = config.get<string>('bitbucketUrl', '');
+          const isBBServer = scmProvider === 'bitbucket' && !!bbUrl;
+          const scmLabel = scmProvider === 'github' ? 'GitHub' : 'Bitbucket';
+
+          scmCallback = {
+            scmLabel,
+            dedupKey: (c) => deduplicateKey(c.filePath, c.line, c.rule),
+            getExistingKeys: async () => {
+              let tracker: InstanceType<typeof CommentTracker>;
+              if (isBBServer) {
+                tracker = new CommentTracker({ baseUrl: bbUrl, token: scmToken, project: repoInfo.owner, repoSlug: repoInfo.repo }, 'bitbucket-server');
+              } else if (scmProvider === 'github') {
+                tracker = new CommentTracker({ owner: repoInfo.owner, repo: repoInfo.repo, token: scmToken, ...(gheUrl && { baseUrl: gheUrl }) } as any, 'github');
+              } else {
+                tracker = new CommentTracker({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken } as any);
+              }
+              return tracker.getExistingIraComments(prNumber!);
+            },
+            postComment: async (comment) => {
+              try {
+                if (isBBServer) {
+                  // Delegate to extension.ts helper via command
+                  const { getPRContext } = await import('../extension');
+                  const ctx = getPRContext();
+                  if (!ctx) return false;
+                  const formatted = formatIssueForSCM(comment);
+                  await postBBServerCommentDirect(ctx, formatted, { path: comment.filePath, line: comment.line });
+                } else {
+                  const scmClient = scmProvider === 'github'
+                    ? new GitHubClient({ owner: repoInfo.owner, repo: repoInfo.repo, token: scmToken, ...(gheUrl && { baseUrl: gheUrl }) } as any)
+                    : new BitbucketClient({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken } as any);
+                  await scmClient.postComment(comment, prNumber!);
+                }
+                return true;
+              } catch {
+                return false;
+              }
+            },
+          };
+        }
+
+        showReviewResultsPanel(result, jiraPostCallback, scmCallback);
 
         // Store PR context for per-issue and bulk posting commands
         if (prNumber) {
@@ -1074,4 +1121,48 @@ function parseACResponse(rawResponse: string): Array<{ description: string; met:
   // Fallback: could not parse - return empty to avoid misleading failed criteria
   console.warn('IRA: Could not parse AC validation response');
   return [];
+}
+
+/** Format an IRA ReviewComment for BB Server posting (mirrors extension.ts formatIssueComment). */
+function formatIssueForSCM(comment: ReviewComment): string {
+  const location = comment.line > 0 ? '' : `\n**File:** \`${comment.filePath}\`\n`;
+  const marker = `<!-- ira:file=${comment.filePath};line=${comment.line};rule=${comment.rule} -->`;
+  return [
+    marker,
+    `🔍 **IRA Review** - \`${comment.rule}\` (${comment.severity})`,
+    location,
+    `> ${comment.message}`,
+    '',
+    `**Explanation:** ${comment.aiReview.explanation}`,
+    '',
+    `**Impact:** ${comment.aiReview.impact}`,
+    '',
+    `**Suggested Fix:**`,
+    comment.aiReview.suggestedFix,
+  ].join('\n');
+}
+
+/** Post a comment to Bitbucket Server REST API (used by webview bulk post). */
+async function postBBServerCommentDirect(
+  ctx: { prNumber: string; owner: string; repo: string; scmToken: string; bitbucketUrl?: string },
+  body: string,
+  anchor?: { path: string; line: number },
+): Promise<void> {
+  const url = `${ctx.bitbucketUrl!.replace(/\/+$/, '')}/rest/api/1.0/projects/${ctx.owner}/repos/${ctx.repo}/pull-requests/${ctx.prNumber}/comments`;
+  const payload: Record<string, unknown> = { text: body };
+  if (anchor && anchor.line > 0) {
+    payload.anchor = { path: anchor.path, line: anchor.line, lineType: 'ADDED' };
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${ctx.scmToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    if (response.status === 400 && anchor) {
+      return postBBServerCommentDirect(ctx, body);
+    }
+    const text = await response.text();
+    throw new Error(`Bitbucket Server API error (${response.status}): ${text.slice(0, 200)}`);
+  }
 }
