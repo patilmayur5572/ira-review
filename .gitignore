@@ -10,3 +10,4 @@ coverage/
 .irarc.json
 ira.config.json
 *.vsix
+IRA_VSCODE_MASTERPLAN.md
