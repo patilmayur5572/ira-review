@@ -78,7 +78,7 @@ Commit a `.ira-rules.json` to your repo root. Rules are injected into the AI pro
 **Rules:**
 - `message` + `severity` required. `bad`/`good` examples and `paths` are optional.
 - Rules without `paths` apply to all files. Rules with `paths` match only those directories.
-- Maximum 100 rules. Deterministic checks (naming, formatting) belong in ESLint.
+- No hard cap on rules (soft warning above 500). Deterministic checks (naming, formatting) belong in ESLint.
 - Invalid rules are skipped with a warning, not a crash.
 - No license gating. Works in CLI, CI/CD, and VS Code extension.
 

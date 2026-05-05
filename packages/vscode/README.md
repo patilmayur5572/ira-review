@@ -89,19 +89,22 @@ They are complementary. Use Copilot to write. Use IRA to review. IRA uses your e
 
 ---
 
-## Quick Start (under 60 seconds)
+## Quick Start (under 2 minutes)
 
 1. Install IRA from the VS Code Marketplace
 2. Open a project with a GitHub or Bitbucket remote
-3. `Cmd+Shift+P` > `IRA: Review Current PR`
-4. Pick "I have a PR number" or "No PR yet (review local changes)"
-5. Issues appear inline in your editor
+3. `Cmd+Shift+P` → **`IRA: Quick Start`** (auto-detects your SCM, walks you through token setup, optional JIRA — all in one flow)
+4. Done. Run `IRA: Review Current PR` to start reviewing.
 
-That is it. If you have GitHub Copilot, IRA uses it automatically. No API keys, no config files, no setup wizard. Have AMP CLI? Set the AI provider to `amp` in settings and IRA uses your AMP session instead. No PR? No problem - IRA diffs your local changes against the default branch.
+If you skip step 3 and run `IRA: Review Current PR` directly, IRA will offer to set itself up if it detects no credentials. Either path lands you in the same place.
 
-**Bitbucket?** IRA auto-detects it from your git remote. It will ask for your token once and store it in the OS keychain.
+**Already on GitHub Copilot?** Quick Start finishes in seconds — Copilot is the default AI backend, so no API key is needed. Have AMP CLI installed? Set `ira.aiProvider` to `amp` to use your AMP session instead.
 
-**SonarQube or JIRA?** Optional. Set the URL in settings, and IRA prompts for the token on first use. Stored securely, never in plaintext.
+**Bitbucket Server or Data Center?** Quick Start auto-detects the base URL from your git remote, prompts for an HTTP Access Token (not a password — important for Server users), and saves both. No Settings JSON to edit.
+
+**JIRA?** Optional. Quick Start asks once and pre-fills a sensible URL when it can derive one from your Bitbucket setup.
+
+**SonarQube?** Optional. Set the URL in Settings, and IRA prompts for the token on first use. Stored securely in the OS keychain, never in plaintext.
 
 ---
 
@@ -129,7 +132,7 @@ Put them in `.ira-rules.json` at your repo root. IRA enforces them on every revi
 }
 ```
 
-Run `IRA: Init Rules File` from the command palette to scaffold one. IRA ships a JSON Schema, so you get autocomplete and validation as you edit. Rules are scoped by `paths` (optional), capped at 100 per file, and enforced in every review surface with no license gating.
+Run `IRA: Init Rules File` from the command palette to scaffold one. IRA ships a JSON Schema, so you get autocomplete and validation as you edit. Rules are scoped by `paths` (optional) and enforced in every review surface with no license gating.
 
 ### Sensitive Areas
 
@@ -179,6 +182,7 @@ All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux
 
 | Command | What it does |
 |---|---|
+| `IRA: Quick Start` | One-command guided setup — auto-detects SCM from git remote, prompts for tokens with the right copy for Bitbucket Server/Cloud/GitHub, optionally configures JIRA |
 | `IRA: Review Current PR` | Review all changed files in a pull request, or review local changes without a PR |
 | `IRA: Generate PR Description` | Generate a PR description from the diff and JIRA context |
 | `IRA: Generate Tests` | Generate test cases from JIRA acceptance criteria |

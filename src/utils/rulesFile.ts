@@ -23,7 +23,7 @@ export interface IraRulesFile {
 }
 
 const VALID_SEVERITIES = ['BLOCKER', 'CRITICAL', 'MAJOR', 'MINOR'] as const;
-const MAX_RULES = 100;
+const RULES_SOFT_WARN_THRESHOLD = 500;
 
 function loadRawRulesFile(cwd?: string): Record<string, unknown> | null {
   const dir = cwd ?? process.cwd();
@@ -93,9 +93,8 @@ export function loadRulesFile(cwd?: string): IraRule[] {
     });
   }
 
-  if (valid.length > MAX_RULES) {
-    console.warn(`IRA: .ira-rules.json has more than ${MAX_RULES} rules. Only the first ${MAX_RULES} will be enforced. Tip: Move deterministic rules to ESLint and keep only nuanced, context-dependent rules in IRA.`);
-    return valid.slice(0, MAX_RULES);
+  if (valid.length > RULES_SOFT_WARN_THRESHOLD) {
+    console.warn(`IRA: .ira-rules.json has ${valid.length} rules (>${RULES_SOFT_WARN_THRESHOLD}). All will be enforced, but large rulesets can inflate the AI prompt and risk hitting model context limits. Tip: Move deterministic rules to ESLint and keep only nuanced, context-dependent rules in IRA.`);
   }
 
   return valid;

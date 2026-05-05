@@ -245,7 +245,7 @@ export class AuthProvider implements vscode.Disposable {
 
   private async signInBitbucket(): Promise<ScmSession | null> {
     const token = await vscode.window.showInputBox({
-      prompt: 'Paste your Bitbucket App Password (Bitbucket → Settings → App Passwords → Create)',
+      prompt: 'Paste your Bitbucket HTTP Token (Bitbucket → Settings → HTTP Tokens → Create)',
       placeHolder: 'ATBB...',
       password: true,
       ignoreFocusOut: true,
@@ -276,6 +276,21 @@ export class AuthProvider implements vscode.Disposable {
 
   async storeSonarToken(token: string): Promise<void> {
     await this.secrets.store(SONAR_SECRET_KEY, token);
+  }
+
+  /**
+   * Store a Bitbucket token directly (bypasses the legacy interactive
+   * `signInBitbucket` prompt). Used by Quick Start so it can render its own
+   * up-to-date prompt copy ("HTTP Access Token" instead of "App Password")
+   * without touching the existing sign-in flow.
+   */
+  async storeBitbucketToken(token: string): Promise<ScmSession> {
+    await this.secrets.store(BITBUCKET_SECRET_KEY, token);
+    return this.cacheSession({
+      provider: 'bitbucket',
+      accessToken: token,
+      accountName: 'Bitbucket',
+    });
   }
 
   async getJiraToken(): Promise<string> {

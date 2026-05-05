@@ -2,7 +2,7 @@
   "name": "ira-review-vscode",
   "displayName": "IRA — AI Code Reviews",
   "description": "AI-powered code reviews inside your editor. Privacy-first, local-only.",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "publisher": "ira-review",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/ira-icon.png",
@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
-    "esbuild": "^0.20.0",
+    "esbuild": "^0.25.0",
     "@types/node": "^20.14.0",
     "typescript": "^5.5.0"
   },
@@ -55,6 +55,10 @@
       {
         "command": "ira.reviewPR",
         "title": "IRA: Review Current PR"
+      },
+      {
+        "command": "ira.quickStart",
+        "title": "IRA: Quick Start"
       },
       {
         "command": "ira.generateTests",
@@ -302,6 +306,48 @@
           "name": "Trends ⭐"
         }
       ]
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "iraGettingStarted",
+        "title": "Get Started with IRA",
+        "description": "Set up IRA in 2 minutes — guided sign-in, optional JIRA, and your first review.",
+        "steps": [
+          {
+            "id": "iraQuickStart",
+            "title": "Run Quick Start",
+            "description": "One command auto-detects your SCM, prompts for tokens with the right copy, and optionally configures JIRA.\n[Run Quick Start](command:ira.quickStart)",
+            "media": {
+              "markdown": "resources/walkthrough/01-quick-start.md"
+            },
+            "completionEvents": [
+              "onCommand:ira.quickStart"
+            ]
+          },
+          {
+            "id": "iraFirstReview",
+            "title": "Run Your First Review",
+            "description": "Review a PR by number, or your local uncommitted changes against the default branch.\n[Run Your First Review](command:ira.reviewPR)",
+            "media": {
+              "markdown": "resources/walkthrough/02-first-review.md"
+            },
+            "completionEvents": [
+              "onCommand:ira.reviewPR"
+            ]
+          },
+          {
+            "id": "iraTeamRules",
+            "title": "Add Team Rules (Optional)",
+            "description": "Scaffold a `.ira-rules.json` to enforce your team's standards in every review.\n[Scaffold a Rules File](command:ira.initRules)",
+            "media": {
+              "markdown": "resources/walkthrough/03-team-rules.md"
+            },
+            "completionEvents": [
+              "onCommand:ira.initRules"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

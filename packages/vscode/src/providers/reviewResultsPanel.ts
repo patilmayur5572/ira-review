@@ -21,12 +21,64 @@ let currentMessageDisposable: vscode.Disposable | undefined;
 export interface PostToSCMCallback {
   /** Post a single comment to the PR. Return true on success. */
   postComment: (comment: ReviewComment) => Promise<boolean>;
+  /**
+   * Post a top-level (non-inline) markdown summary comment to the PR.
+   * Optional - when provided, enables the "Post AC Summary to <SCM>" button
+   * in the webview. Return true on success.
+   */
+  postSummary?: (markdown: string) => Promise<boolean>;
   /** Get dedup keys of already-posted IRA comments. */
   getExistingKeys: () => Promise<Set<string>>;
   /** Build a dedup key for a comment. */
   dedupKey: (comment: ReviewComment) => string;
   /** Display label for the SCM (e.g. "GitHub", "Bitbucket"). */
   scmLabel: string;
+}
+
+/**
+ * Format an AC validation result as a Markdown summary suitable for posting
+ * as a top-level PR comment on any SCM (GitHub, Bitbucket Cloud, Bitbucket Server).
+ *
+ * Includes an HTML comment marker so subsequent reviews can detect and skip
+ * duplicate AC summaries.
+ *
+ * Exported for unit testing.
+ */
+export function formatACValidationMarkdown(
+  av: NonNullable<ReviewResult['acceptanceValidation']>,
+): string {
+  const criteria = av.criteria || [];
+  const met = criteria.filter(c => c.met).length;
+  const total = criteria.length;
+  const allMet = met === total && total > 0;
+  const isBug = av.issueType === 'bug';
+
+  const heading = isBug ? 'Bug Fix Validation' : 'Acceptance Criteria';
+  const summaryLine = isBug
+    ? `**${met}/${total} checks passed**${allMet ? ' ✅' : ''}`
+    : `**${met}/${total} ACs met**${allMet ? ' ✅' : ''}`;
+
+  const lines: string[] = [];
+  lines.push(`<!-- ira:ac-summary;jiraKey=${av.jiraKey} -->`);
+  lines.push(`## 🔍 IRA - ${heading} (${av.jiraKey})`);
+  lines.push('');
+  lines.push(summaryLine);
+  lines.push('');
+
+  for (const c of criteria) {
+    let desc = c.description;
+    // Balance unclosed parentheses from AI responses (mirrors webview behaviour)
+    const opens = (desc.match(/\(/g) || []).length;
+    const closes = (desc.match(/\)/g) || []).length;
+    if (opens > closes) desc += ')'.repeat(opens - closes);
+    const icon = c.met ? '✅' : '❌';
+    lines.push(`- ${icon} ${desc}`);
+    if (c.evidence && c.evidence.trim().length > 0) {
+      lines.push(`  - _Evidence:_ ${c.evidence}`);
+    }
+  }
+
+  return lines.join('\n');
 }
 
 export function showReviewResultsPanel(
@@ -49,13 +101,27 @@ export function showReviewResultsPanel(
   // Dispose previous message listener to avoid stacking handlers on panel reuse
   currentMessageDisposable?.dispose();
 
-  currentPanel.webview.html = buildHtml(result, onPostToSCM?.scmLabel);
+  const canPostACSummary = !!onPostToSCM?.postSummary && !!result.acceptanceValidation;
+  currentPanel.webview.html = buildHtml(result, onPostToSCM?.scmLabel, canPostACSummary);
 
   currentMessageDisposable = currentPanel.webview.onDidReceiveMessage(async (msg) => {
     if (msg.type === 'postToJira' && onPostToJira) {
       const success = await onPostToJira();
       currentPanel?.webview.postMessage({
         type: 'postResult',
+        success,
+      });
+    }
+    if (msg.type === 'postACSummaryToSCM' && onPostToSCM?.postSummary && result.acceptanceValidation) {
+      let success = false;
+      try {
+        const markdown = formatACValidationMarkdown(result.acceptanceValidation);
+        success = await onPostToSCM.postSummary(markdown);
+      } catch {
+        success = false;
+      }
+      currentPanel?.webview.postMessage({
+        type: 'postACSummaryResult',
         success,
       });
     }
@@ -137,10 +203,21 @@ export function showReviewResultsPanel(
   });
 }
 
-function buildHtml(result: ReviewResult, scmLabel?: string): string {
+/**
+ * Build the webview HTML. Exported for unit testing.
+ *
+ * @param canPostACSummary - When true AND `result.acceptanceValidation` exists,
+ *   renders a "Post AC Summary to <scmLabel>" button below the AC list.
+ */
+export function buildHtml(
+  result: ReviewResult,
+  scmLabel?: string,
+  canPostACSummary: boolean = false,
+): string {
   const nonce = getNonce();
   const hasIssues = result.totalIssues > 0;
   const hasSCM = !!scmLabel && hasIssues;
+  const showACPostButton = canPostACSummary && !!scmLabel && !!result.acceptanceValidation;
 
   const issuesByLevel = {
     blocker: result.comments.filter(c => c.severity === 'BLOCKER').length,
@@ -202,7 +279,11 @@ function buildHtml(result: ReviewResult, scmLabel?: string): string {
       if (opens > closes) desc += ')'.repeat(opens - closes);
       acSection += `<div class="ac-row">${c.met ? '✅' : '❌'} ${esc(desc)}</div>`;
     }
-    acSection += '</div></div></div>';
+    acSection += '</div>';
+    if (showACPostButton) {
+      acSection += `<div class="cta"><button id="postACSummaryToSCM" class="btn">Post AC Summary to ${esc(scmLabel!)}</button></div>`;
+    }
+    acSection += '</div></div>';
   }
 
   // Generated ACs section
@@ -315,12 +396,22 @@ ${stickyFooter}
     });
   }
 
+  // --- AC summary post-to-SCM button ---
+  const acSummaryBtn = document.getElementById('postACSummaryToSCM');
+  if (acSummaryBtn) {
+    acSummaryBtn.addEventListener('click', () => {
+      acSummaryBtn.disabled = true;
+      acSummaryBtn.textContent = 'Posting...';
+      vscode.postMessage({ type: 'postACSummaryToSCM' });
+    });
+  }
+
   // --- SCM bulk post ---
   const scmBtn = document.getElementById('postAllToSCM');
   const selectAllCb = document.getElementById('selectAll');
   const selectionCountEl = document.getElementById('selectionCount');
   const totalIssues = ${result.totalIssues};
-  const scmLabel = ${hasSCM ? `'${esc(scmLabel!)}'` : 'null'};
+  const scmLabel = ${scmLabel ? `'${esc(scmLabel)}'` : 'null'};
 
   function getCheckedIndices() {
     const cbs = document.querySelectorAll('.issue-cb');
@@ -383,6 +474,16 @@ ${stickyFooter}
       } else {
         jiraBtn.textContent = 'Failed - try again';
         jiraBtn.disabled = false;
+      }
+    }
+    // AC summary post-to-SCM result
+    if (msg.type === 'postACSummaryResult' && acSummaryBtn) {
+      if (msg.success) {
+        acSummaryBtn.textContent = 'Posted to ' + (scmLabel || 'SCM');
+        acSummaryBtn.classList.add('posted');
+      } else {
+        acSummaryBtn.textContent = 'Failed - try again';
+        acSummaryBtn.disabled = false;
       }
     }
     // SCM per-comment progress

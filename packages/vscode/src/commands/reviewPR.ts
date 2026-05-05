@@ -126,7 +126,18 @@ export async function reviewPR(
         // Auth: resolve token via AuthProvider (auto-detects SCM, OAuth → SecretStorage → settings PAT)
         const scmSession = await AuthProvider.getInstance().resolveScmSession(workspaceRoot);
         if (!scmSession) {
-          vscode.window.showErrorMessage(msg.authRequired());
+          // Failed-action interceptor: instead of a dead-end error, offer the
+          // guided Quick Start flow. Keeps the original error message as the
+          // 'Cancel' path for users who really do want to bail out.
+          const action = await vscode.window.showWarningMessage(
+            'IRA isn\'t set up yet. Quick Start takes ~2 minutes and walks you through everything.',
+            { modal: false },
+            'Run Quick Start',
+            'Cancel',
+          );
+          if (action === 'Run Quick Start') {
+            await vscode.commands.executeCommand('ira.quickStart');
+          }
           return;
         }
         const scmProvider = scmSession.provider === 'github-enterprise' ? 'github' : scmSession.provider;
@@ -264,9 +275,11 @@ export async function reviewPR(
           return postACsToJira(config, acGen.jiraKey, commentBody);
         } : undefined;
 
-        // Build SCM bulk-post callback when we have a PR number
+        // Build SCM bulk-post callback when we have a PR number AND either:
+        //   - inline issues to post, or
+        //   - an AC validation summary that can be posted as a top-level comment
         let scmCallback: PostToSCMCallback | undefined;
-        if (prNumber && result.totalIssues > 0) {
+        if (prNumber && (result.totalIssues > 0 || result.acceptanceValidation)) {
           const { CommentTracker, deduplicateKey } = await import('ira-review');
           const bbUrl = config.get<string>('bitbucketUrl', '');
           const isBBServer = scmProvider === 'bitbucket' && !!bbUrl;
@@ -300,6 +313,28 @@ export async function reviewPR(
                     ? new GitHubClient({ owner: repoInfo.owner, repo: repoInfo.repo, token: scmToken, ...(gheUrl && { baseUrl: gheUrl }) } as any)
                     : new BitbucketClient({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken } as any);
                   await scmClient.postComment(comment, prNumber!);
+                }
+                return true;
+              } catch {
+                return false;
+              }
+            },
+            // Post a top-level (non-inline) markdown summary to the PR.
+            // Used by the "Post AC Summary to <SCM>" button in the webview.
+            // Supported on all SCMs: GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server.
+            postSummary: async (markdown) => {
+              try {
+                if (isBBServer) {
+                  const { getPRContext } = await import('../extension');
+                  const ctx = getPRContext();
+                  if (!ctx) return false;
+                  await postBBServerCommentDirect(ctx, markdown);
+                } else if (scmProvider === 'github') {
+                  const client = new GitHubClient({ owner: repoInfo.owner, repo: repoInfo.repo, token: scmToken, ...(gheUrl && { baseUrl: gheUrl }) } as any);
+                  await client.postSummary(markdown, prNumber!);
+                } else {
+                  const client = new BitbucketClient({ workspace: repoInfo.owner, repoSlug: repoInfo.repo, token: scmToken } as any);
+                  await client.postSummary(markdown, prNumber!);
                 }
                 return true;
               } catch {

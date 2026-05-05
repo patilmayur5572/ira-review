@@ -2,6 +2,14 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.0.2] — 2026-05-05
+
+### Changed
+
+- **Bitbucket sign-in prompt** — Legacy `IRA: Sign In` prompt now reads "Paste your Bitbucket HTTP Token (Bitbucket → Settings → HTTP Tokens → Create)" instead of the deprecated "App Password" wording. The newer Quick Start flow already used the correct terminology.
+- **Unlimited team rules** — Removed the 100-rule cap on `.ira-rules.json`. All valid rules are now loaded and enforced. A soft warning is logged above 500 rules since large rulesets can inflate the AI prompt; consider moving deterministic checks (naming, formatting) to ESLint. Applies to both the CLI and the VS Code extension.
+- **Rules JSON Schema** — Removed `maxItems: 100` from `ira-rules.schema.json`.
+
 ## [3.0.0] — 2025-04-21
 
 ### Breaking Changes

@@ -182,7 +182,7 @@ Each rule has a `message` (what to tell the developer), a `severity` (BLOCKER, C
 }
 ```
 
-Rules without `paths` apply to all files. Rules with `paths` are only checked against matching files. The file is validated at load time: invalid severity values and missing required fields are skipped with a warning. Maximum 100 rules per file. IRA rules are for nuanced, context-dependent standards that linters cannot express. Deterministic checks (naming conventions, import order, formatting) belong in ESLint.
+Rules without `paths` apply to all files. Rules with `paths` are only checked against matching files. The file is validated at load time: invalid severity values and missing required fields are skipped with a warning. There is no hard cap on the number of rules; a soft warning is logged above 500 since large rulesets can inflate the AI prompt. IRA rules are for nuanced, context-dependent standards that linters cannot express. Deterministic checks (naming conventions, import order, formatting) belong in ESLint.
 
 Rules are enforced in all review surfaces (CLI, CI/CD, VS Code extension) with no license gating. In the VS Code extension, run `IRA: Init Rules File` from the command palette to scaffold an empty `.ira-rules.json`. The extension ships a JSON Schema for the file, so you get autocomplete and validation as you edit.
 
@@ -279,10 +279,10 @@ Suggested Fix: Use parameterized queries:
 
 1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode)
 2. Open a project with a GitHub or Bitbucket remote
-3. `Cmd+Shift+P` > `IRA: Review Current PR`
-4. Enter your PR number
+3. `Cmd+Shift+P` > `IRA: Quick Start` (auto-detects SCM, walks you through tokens, optionally sets up JIRA)
+4. `Cmd+Shift+P` > `IRA: Review Current PR` and enter your PR number
 
-If you have GitHub Copilot, that is all you need. No API keys, no configuration. Alternatively, set the AI provider to `amp` if you have the AMP CLI installed (`amp login`).
+If you have GitHub Copilot, Quick Start finishes in seconds — no API keys, no configuration. Alternatively, set the AI provider to `amp` if you have the AMP CLI installed (`amp login`). For Bitbucket Server / Data Center or JIRA, Quick Start gives you the right token-creation links inline.
 
 ### CLI
 

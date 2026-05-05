@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { reviewPR } from './commands/reviewPR';
 import { generatePRDescription } from './commands/generatePRDescription';
 import { generateTests } from './commands/generateTests';
+import { quickStart } from './commands/quickStart';
 
 import { createStatusBar, updateStatusBar } from './providers/statusBarProvider';
 import { removeDiagnostic } from './providers/diagnosticsProvider';
@@ -164,6 +165,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ira.reviewPR', () =>
       reviewPR(context, diagnosticCollection, statusBar, treeProvider, codeLensProvider)
     ),
+    vscode.commands.registerCommand('ira.quickStart', () => quickStart()),
     vscode.commands.registerCommand('ira.generatePRDescription', () => generatePRDescription()),
     vscode.commands.registerCommand('ira.generateTests', () => generateTests()),
     vscode.commands.registerCommand('ira.configure', () =>

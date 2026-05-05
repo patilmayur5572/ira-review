@@ -114,9 +114,9 @@ describe("loadRulesFile", () => {
     );
   });
 
-  it("caps at 100 rules with ESLint suggestion in warning", () => {
+  it("loads all rules without any cap", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const rules = Array.from({ length: 105 }, (_, i) => ({
+    const rules = Array.from({ length: 250 }, (_, i) => ({
       message: `Rule ${i + 1}`,
       severity: "MINOR",
     }));
@@ -124,9 +124,23 @@ describe("loadRulesFile", () => {
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ rules }));
 
     const result = loadRulesFile("/fake/dir");
-    expect(result).toHaveLength(100);
+    expect(result).toHaveLength(250);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("emits a soft warning above 500 rules but still loads them all", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rules = Array.from({ length: 600 }, (_, i) => ({
+      message: `Rule ${i + 1}`,
+      severity: "MINOR",
+    }));
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ rules }));
+
+    const result = loadRulesFile("/fake/dir");
+    expect(result).toHaveLength(600);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("more than 100 rules"),
+      expect.stringContaining("600 rules"),
     );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("Move deterministic rules to ESLint"),
