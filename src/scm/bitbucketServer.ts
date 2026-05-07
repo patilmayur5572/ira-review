@@ -1,0 +1,403 @@
+/**
+ * Bitbucket Server / Data Center client.
+ *
+ * Differs from Bitbucket Cloud (src/scm/bitbucket.ts) in three big ways:
+ *   1. URL pattern:      /rest/api/1.0/projects/{P}/repos/{R}/pull-requests/{N}/...
+ *   2. JSON shapes:      comments use { text, anchor:{path,line,lineType,fileType} },
+ *                        PR state lives at top-level "state" but commit hash is in fromRef.
+ *   3. Pagination:       start / limit / isLastPage / nextPageStart (NOT a "next" URL).
+ *
+ * Reference implementation lives in packages/vscode/src/extension.ts and
+ * packages/vscode/src/commands/reviewPR.ts — that code is proven against real
+ * enterprise BB Server instances and is the source of truth for any edge cases.
+ *
+ * The legacy BitbucketClient (Cloud) is intentionally NOT touched.
+ */
+
+import type { BitbucketConfig, CommentStyle } from "../types/config.js";
+import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
+import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
+import { formatReviewComment } from "../utils/commentFormatter.js";
+
+/** Bitbucket Server JSON diff shape (returned by /pull-requests/{n}/diff). */
+interface BitbucketServerDiffResponse {
+  diffs: Array<{
+    source?: { toString: string };
+    destination?: { toString: string };
+    hunks?: Array<{
+      segments: Array<{
+        type: "ADDED" | "REMOVED" | "CONTEXT";
+        lines: Array<{ line: string; source?: number; destination?: number }>;
+      }>;
+    }>;
+  }>;
+}
+
+/** Convert BB Server's structured diff JSON into a standard unified diff string. */
+export function convertBBServerDiffToUnified(json: BitbucketServerDiffResponse): string {
+  const parts: string[] = [];
+  for (const diff of json.diffs ?? []) {
+    const src = diff.source?.toString ?? "/dev/null";
+    const dst = diff.destination?.toString ?? "/dev/null";
+    parts.push(`diff --git a/${src} b/${dst}`);
+    parts.push(`--- a/${src}`);
+    parts.push(`+++ b/${dst}`);
+    for (const hunk of diff.hunks ?? []) {
+      parts.push("@@ -1,0 +1,0 @@");
+      for (const seg of hunk.segments) {
+        const prefix = seg.type === "ADDED" ? "+" : seg.type === "REMOVED" ? "-" : " ";
+        for (const line of seg.lines) {
+          parts.push(`${prefix}${line.line}`);
+        }
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
+interface BBServerPaginatedResponse<T> {
+  values: T[];
+  isLastPage: boolean;
+  nextPageStart?: number;
+  size?: number;
+  start?: number;
+  limit?: number;
+}
+
+interface BBServerPRDetail {
+  state?: string;
+  fromRef?: { latestCommit?: string };
+  toRef?: { latestCommit?: string };
+}
+
+interface BBServerChange {
+  path?: { toString?: string };
+  type?: string;
+}
+
+/**
+ * Bitbucket Server / Data Center client.
+ *
+ * Re-uses BitbucketConfig: `workspace` field doubles as the BB Server PROJECT key
+ * (e.g. "PROJ"), `repoSlug` is the repo slug, and `baseUrl` MUST be set to the
+ * server root (e.g. https://bitbucket.example.com — no trailing /rest/api/1.0).
+ */
+export class BitbucketServerClient implements SCMProvider {
+  private readonly baseUrl: string;
+  private readonly headers: Record<string, string>;
+  private readonly project: string;
+  private readonly repoSlug: string;
+  private readonly commentStyle: CommentStyle;
+  private readonly prDetailCache = new Map<string, Promise<BBServerPRDetail>>();
+
+  constructor(config: BitbucketConfig, opts: { commentStyle?: CommentStyle } = {}) {
+    if (!config.baseUrl) {
+      throw new Error(
+        "BitbucketServerClient requires baseUrl (e.g. https://bitbucket.example.com).",
+      );
+    }
+    // Strip trailing slashes AND a trailing /rest/api/1.0 suffix if user passed one.
+    this.baseUrl = config.baseUrl
+      .replace(/\/+$/, "")
+      .replace(/\/rest\/api\/1\.0$/, "");
+    this.project = config.workspace; // BB Server uses PROJECT key in this slot
+    this.repoSlug = config.repoSlug;
+    this.commentStyle = opts.commentStyle ?? "compact";
+    this.headers = {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+  }
+
+  private prUrl(prId: string, suffix = ""): string {
+    return `${this.baseUrl}/rest/api/1.0/projects/${this.project}/repos/${this.repoSlug}/pull-requests/${prId}${suffix}`;
+  }
+
+  async postComment(comment: ReviewComment, pullRequestId: string): Promise<void> {
+    const body = formatReviewComment(comment, { style: this.commentStyle });
+    const url = this.prUrl(pullRequestId, "/comments");
+
+    // BB Server inline-comment anchor — note `lineType:'ADDED'`+`fileType:'TO'` is what works.
+    const payload: Record<string, unknown> = { text: body };
+    if (comment.line > 0) {
+      payload.anchor = {
+        path: comment.filePath,
+        line: comment.line,
+        lineType: "ADDED",
+        fileType: "TO",
+      };
+    }
+
+    await withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+
+        // If inline anchor failed (line not in diff), retry as a general PR comment.
+        if (response.status === 400 && payload.anchor) {
+          const retryResp = await fetchWithTimeout(url, {
+            method: "POST",
+            headers: this.headers,
+            body: JSON.stringify({ text: body }),
+          });
+          if (!retryResp.ok) {
+            const rt = await retryResp.text();
+            throw new RetryableError(
+              parseApiError(retryResp.status, rt, "Bitbucket Server"),
+              retryResp.status,
+            );
+          }
+          return;
+        }
+
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+    });
+  }
+
+  async postSummary(summary: string, pullRequestId: string): Promise<void> {
+    const url = this.prUrl(pullRequestId, "/comments");
+    await withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify({ text: summary }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+    });
+  }
+
+  async getIssueComments(pullRequestId: string): Promise<string[]> {
+    const bodies: string[] = [];
+    let start = 0;
+    while (true) {
+      const url = this.prUrl(pullRequestId, `/comments?start=${start}&limit=100`);
+      const data = await withRetry(async () => {
+        const response = await fetchWithTimeout(url, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, "Bitbucket Server"),
+            response.status,
+          );
+        }
+        return (await response.json()) as BBServerPaginatedResponse<{ text: string }>;
+      });
+
+      for (const c of data.values) bodies.push(c.text);
+      if (data.isLastPage) break;
+      start = data.nextPageStart ?? start + 100;
+    }
+    return bodies;
+  }
+
+  async getFileContent(filePath: string, pullRequestId: string): Promise<string> {
+    const pr = await this.getPRDetail(pullRequestId);
+    const sha = pr.fromRef?.latestCommit;
+    if (!sha) {
+      throw new Error(
+        `Could not resolve source commit for PR #${pullRequestId} (fromRef.latestCommit missing).`,
+      );
+    }
+
+    const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+    // /raw/{path}?at={sha} returns the file body verbatim.
+    const url = `${this.baseUrl}/projects/${this.project}/repos/${this.repoSlug}/raw/${encodedPath}?at=${sha}`;
+
+    return withRetry(async () => {
+      const response = await fetchWithTimeout(url, { headers: this.headers });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+      return response.text();
+    });
+  }
+
+  async getPRState(pullRequestId: string): Promise<PRState> {
+    try {
+      const pr = await this.getPRDetail(pullRequestId);
+      const state = pr.state?.toUpperCase();
+      if (state === "MERGED") return "merged";
+      if (state === "DECLINED" || state === "SUPERSEDED") return "declined";
+      if (state === "OPEN") return "open";
+      return "unknown";
+    } catch (error) {
+      const status = error instanceof RetryableError ? error.statusCode : undefined;
+      if (status === 404) {
+        throw new Error(
+          `PR #${pullRequestId} was not found in ${this.project}/${this.repoSlug} — it may have been deleted.\n` +
+          `  💡 Double-check the PR number and project key.`,
+        );
+      }
+      return "unknown";
+    }
+  }
+
+  async getDiff(pullRequestId: string): Promise<string> {
+    const url = this.prUrl(pullRequestId, "/diff?contextLines=3");
+    return withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        headers: { ...this.headers, Accept: "text/plain" },
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+      const rawText = await response.text();
+      const contentType = response.headers.get("content-type") ?? "";
+      // BB Server may return JSON regardless of Accept header — convert to unified diff.
+      if (contentType.includes("application/json") || rawText.trimStart().startsWith("{")) {
+        const json = JSON.parse(rawText) as BitbucketServerDiffResponse;
+        return convertBBServerDiffToUnified(json);
+      }
+      return rawText;
+    });
+  }
+
+  async getDiffPerFile(pullRequestId: string): Promise<Map<string, string>> {
+    const fileMap = new Map<string, string>();
+
+    // 1. Page through /changes to enumerate added/modified files.
+    const changedFiles: string[] = [];
+    let start = 0;
+    while (true) {
+      const url = this.prUrl(pullRequestId, `/changes?start=${start}&limit=100`);
+      const data = await withRetry(async () => {
+        const response = await fetchWithTimeout(url, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, "Bitbucket Server"),
+            response.status,
+          );
+        }
+        return (await response.json()) as BBServerPaginatedResponse<BBServerChange>;
+      });
+
+      for (const change of data.values) {
+        if (change.type === "DELETE") continue;
+        const path = change.path?.toString;
+        if (path) changedFiles.push(path);
+      }
+
+      if (data.isLastPage) break;
+      start = data.nextPageStart ?? start + 100;
+    }
+
+    // 2. Fetch per-file diff. BB Server diff endpoint accepts ?path= just like Cloud.
+    for (const filePath of changedFiles) {
+      try {
+        const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+        const url = this.prUrl(
+          pullRequestId,
+          `/diff/${encodedPath}?contextLines=3`,
+        );
+        const diff = await withRetry(async () => {
+          const response = await fetchWithTimeout(
+            url,
+            { headers: { ...this.headers, Accept: "text/plain" } },
+            15000,
+          );
+          if (!response.ok) {
+            const text = await response.text();
+            throw new RetryableError(
+              parseApiError(response.status, text, "Bitbucket Server"),
+              response.status,
+            );
+          }
+          const rawText = await response.text();
+          const contentType = response.headers.get("content-type") ?? "";
+          if (contentType.includes("application/json") || rawText.trimStart().startsWith("{")) {
+            return convertBBServerDiffToUnified(JSON.parse(rawText) as BitbucketServerDiffResponse);
+          }
+          return rawText;
+        });
+        if (diff.trim()) fileMap.set(filePath, diff);
+      } catch {
+        // Soft-fail per file — match BitbucketClient behaviour.
+      }
+    }
+
+    return fileMap;
+  }
+
+  async applyRiskLabel(
+    pullRequestId: string,
+    riskLevel: string,
+    riskScore: number,
+  ): Promise<void> {
+    const pr = await this.getPRDetail(pullRequestId);
+    const sha = pr.fromRef?.latestCommit;
+    if (!sha) return; // Soft-fail: nothing to attach the build status to.
+
+    const state = riskLevel === "CRITICAL" || riskLevel === "HIGH" ? "FAILED"
+      : riskLevel === "MEDIUM" ? "INPROGRESS"
+      : "SUCCESSFUL";
+
+    const url = `${this.baseUrl}/rest/build-status/1.0/commits/${sha}`;
+    await withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify({
+          key: "ira-risk",
+          state,
+          name: `IRA Risk: ${riskLevel} (${riskScore}/100)`,
+          description: `IRA assessed this PR as ${riskLevel.toLowerCase()} risk`,
+          url: "https://www.npmjs.com/package/ira-review",
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+    });
+  }
+
+  private getPRDetail(pullRequestId: string): Promise<BBServerPRDetail> {
+    const cached = this.prDetailCache.get(pullRequestId);
+    if (cached) return cached;
+
+    const promise = withRetry(async () => {
+      const response = await fetchWithTimeout(this.prUrl(pullRequestId), {
+        headers: this.headers,
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+      return (await response.json()) as BBServerPRDetail;
+    });
+
+    this.prDetailCache.set(pullRequestId, promise);
+    return promise;
+  }
+}

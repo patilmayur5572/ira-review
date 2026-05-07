@@ -195,7 +195,7 @@ All commands are available via `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux
 
 ## Under the Hood
 
-- **AI Providers:** GitHub Copilot (default, zero config), AMP CLI, OpenAI, Azure OpenAI, Anthropic, Ollama (fully local)
+- **AI Providers:** GitHub Copilot (default, zero config), AMP CLI, GitHub Copilot CLI (also for headless / CI workflows via the npm package), OpenAI, Azure OpenAI, Anthropic, Ollama (fully local)
 - **SCM Providers:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
 - **JIRA:** Cloud (Atlassian-hosted) and Server/Data Center (self-hosted) with auto-detection
 - **Integrations:** SonarQube (static analysis enrichment), JIRA (acceptance criteria validation), Slack and Teams (review notifications)

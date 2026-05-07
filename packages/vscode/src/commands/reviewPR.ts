@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { ReviewEngine, detectFramework, BitbucketClient, GitHubClient, JiraClient, buildStandalonePrompt, parseStandaloneResponse, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt, resolveIssueLocations, annotateDiffWithLineNumbers as annotateDiffWithLineNumbersCore, createAIProvider, hasStructuredAC, generateAcceptanceCriteria, formatACsForJiraComment } from 'ira-review';
+import { ReviewEngine, detectFramework, BitbucketClient, GitHubClient, JiraClient, buildStandalonePrompt, parseStandaloneResponse, calculateRisk, loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt, resolveIssueLocations, annotateDiffWithLineNumbers as annotateDiffWithLineNumbersCore, createAIProvider, hasStructuredAC, generateAcceptanceCriteria, formatACsForJiraComment, formatReviewComment } from 'ira-review';
 import type { ACGenerationResult } from 'ira-review';
 import type { IraConfig, ReviewResult, ReviewComment, BitbucketConfig, GitHubConfig } from 'ira-review';
 import { updateDiagnostics } from '../providers/diagnosticsProvider';
@@ -1158,23 +1158,13 @@ function parseACResponse(rawResponse: string): Array<{ description: string; met:
   return [];
 }
 
-/** Format an IRA ReviewComment for BB Server posting (mirrors extension.ts formatIssueComment). */
+/**
+ * Format an IRA ReviewComment for BB Server posting.
+ * Delegates to the shared formatter in ira-review (style: detailed) so this
+ * file no longer duplicates the comment template.
+ */
 function formatIssueForSCM(comment: ReviewComment): string {
-  const location = comment.line > 0 ? '' : `\n**File:** \`${comment.filePath}\`\n`;
-  const marker = `<!-- ira:file=${comment.filePath};line=${comment.line};rule=${comment.rule} -->`;
-  return [
-    marker,
-    `🔍 **IRA Review** - \`${comment.rule}\` (${comment.severity})`,
-    location,
-    `> ${comment.message}`,
-    '',
-    `**Explanation:** ${comment.aiReview.explanation}`,
-    '',
-    `**Impact:** ${comment.aiReview.impact}`,
-    '',
-    `**Suggested Fix:**`,
-    comment.aiReview.suggestedFix,
-  ].join('\n');
+  return formatReviewComment(comment, { style: 'detailed' });
 }
 
 /** Post a comment to Bitbucket Server REST API (used by webview bulk post). */

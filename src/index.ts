@@ -17,14 +17,19 @@ export { buildSummary } from "./core/summaryBuilder.js";
 export { generateAcceptanceCriteria, formatACsForJiraComment, formatDiscoveredScenariosForJiraComment } from "./core/acGenerator.js";
 
 // AI
-export { createAIProvider, parseAIResponse, AmpCliProvider, isAmpCliAvailable } from "./ai/aiClient.js";
+export { createAIProvider, parseAIResponse, AmpCliProvider, isAmpCliAvailable, CopilotCliProvider } from "./ai/aiClient.js";
 export { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, extractValidLineNumbers, validateIssuesAgainstDiff, resolveIssueLocations, correctLineNumbers, annotateDiffWithLineNumbers } from "./ai/promptBuilder.js";
 
 // SCM
 export { BitbucketClient } from "./scm/bitbucket.js";
+export { BitbucketServerClient, convertBBServerDiffToUnified } from "./scm/bitbucketServer.js";
 export { GitHubClient } from "./scm/github.js";
 export { CommentTracker, deduplicateKey } from "./scm/commentTracker.js";
 export type { BitbucketServerConfig } from "./scm/commentTracker.js";
+
+// Comment formatter (shared by every SCM client and the VS Code extension)
+export { formatReviewComment, buildDedupMarker } from "./utils/commentFormatter.js";
+export type { CommentFormatterInput, FormatOptions } from "./utils/commentFormatter.js";
 
 // Integrations
 export { JiraClient } from "./integrations/jiraClient.js";
@@ -38,10 +43,10 @@ export { withRetry, fetchWithTimeout, RetryableError, TimeoutError, isRetryable 
 export { mapWithConcurrency } from "./utils/concurrency.js";
 export { resolveConfigFromEnv } from "./utils/env.js";
 export { loadConfigFile } from "./utils/configFile.js";
-export { loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "./utils/rulesFile.js";
+export { loadRulesFile, loadRulesFromUrl, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "./utils/rulesFile.js";
 
 // Types
-export type { IraConfig, SonarConfig, BitbucketConfig, GitHubConfig, AIConfig, JiraConfig, NotificationConfig, SCMProviderType, AIProviderType } from "./types/config.js";
+export type { IraConfig, SonarConfig, BitbucketConfig, BitbucketType, GitHubConfig, AIConfig, JiraConfig, NotificationConfig, SCMProviderType, AIProviderType, CommentStyle } from "./types/config.js";
 export type { SonarIssue, Severity, SonarSearchResponse } from "./types/sonar.js";
 export type {
   Framework,

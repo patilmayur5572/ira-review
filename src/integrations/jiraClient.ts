@@ -14,6 +14,8 @@ export class JiraClient {
     this.acceptanceCriteriaField =
       config.acceptanceCriteriaField ?? "";
     this.acFieldResolved = !!config.acceptanceCriteriaField;
+    // Explicit type wins; otherwise infer from URL (atlassian.net → Cloud).
+    // Server / Data Center always uses Bearer-only Personal Access Tokens — email is irrelevant.
     this.isCloud = config.type === "cloud" || (!config.type && config.baseUrl.includes("atlassian.net"));
     const authHeader = this.isCloud
       ? `Basic ${btoa(`${config.email}:${config.token}`)}`
@@ -23,6 +25,13 @@ export class JiraClient {
       "Content-Type": "application/json",
       Accept: "application/json",
     };
+  }
+
+  /** Hint string included in 401 errors so users know which auth flavour to fix. */
+  private auth401Hint(): string {
+    return this.isCloud
+      ? "💡 JIRA Cloud needs --jira-email + --jira-token (an API token from id.atlassian.com/manage-profile/security/api-tokens)."
+      : "💡 JIRA Server / Data Center needs --jira-token set to a Personal Access Token (Profile → Personal Access Tokens). Set --jira-type server explicitly if your URL is not on *.atlassian.net.";
   }
 
   private async resolveAcField(): Promise<string> {
@@ -64,8 +73,11 @@ export class JiraClient {
 
       if (!response.ok) {
         const body = await response.text();
+        const hint = response.status === 401 || response.status === 403
+          ? `\n  ${this.auth401Hint()}`
+          : "";
         throw new RetryableError(
-          parseApiError(response.status, body, 'JIRA'),
+          parseApiError(response.status, body, 'JIRA') + hint,
           response.status,
         );
       }

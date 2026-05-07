@@ -23,8 +23,10 @@ class OpenAIProvider implements AIProvider {
   private readonly client: OpenAI;
   private readonly model: string;
 
-  constructor(apiKey: string, model: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(apiKey: string, model: string, baseUrl?: string) {
+    // baseUrl lets users hit OpenAI-compatible gateways: GitHub Models, LiteLLM,
+    // internal LLM proxies, vLLM, etc. Falls back to OpenAI's default when unset.
+    this.client = new OpenAI({ apiKey, ...(baseUrl && { baseURL: baseUrl }) });
     this.model = model;
   }
 
@@ -359,10 +361,104 @@ export class AmpCliProvider implements AIProvider {
   }
 }
 
+/**
+ * Provider that shells out to the GitHub Copilot CLI (`@github/copilot`, binary `copilot`).
+ *
+ * Designed for enterprise CI environments where:
+ *   - The Copilot CLI is the officially-sanctioned way to use Copilot from non-IDE contexts
+ *   - GH_HOST routes to a GitHub Enterprise tenant (e.g. https://github.example.com)
+ *   - A PAT with "Copilot Requests" permission is exposed via GITHUB_TOKEN
+ *   - Folder trust is pre-configured in ~/.copilot/config.json (so the CLI doesn't prompt)
+ *
+ * The invocation is intentionally minimal:
+ *   copilot -p "<prompt>" -s --allow-all-tools --model=<model>
+ *
+ * Why these specific flags:
+ *   -p / --prompt        non-interactive mode (CLI exits after responding)
+ *   -s / --silent        emit only the agent response (no stats/banner) — outputs raw JSON
+ *   --allow-all-tools    required for non-interactive mode in copilot v0.0.367+
+ *                        (replaces the older --autopilot flag)
+ *   --model              defaults to gpt-4.1; override via COPILOT_MODEL env or config
+ *
+ * Empirical: probed against a GHE tenant on copilot v0.0.367 — when prompted
+ * for valid JSON, stdout is the JSON and nothing else. No code-fence stripping needed.
+ */
+export class CopilotCliProvider implements AIProvider {
+  private readonly model: string;
+
+  constructor(model?: string) {
+    this.model = model ?? process.env.COPILOT_MODEL ?? "gpt-4.1";
+  }
+
+  async review(prompt: string): Promise<AIReviewComment> {
+    const rawText = await this.rawReview(prompt);
+    // Defensive: if a future CLI version ever wraps output in fences, strip them.
+    // Today (v0.0.367) the -s flag yields raw JSON, so this is a no-op.
+    const cleaned = rawText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    return parseAIResponse(cleaned);
+  }
+
+  rawReview(prompt: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      // Pass through every env var — copilot CLI relies on GITHUB_TOKEN, GH_HOST,
+      // HTTPS_PROXY, NODE_EXTRA_CA_CERTS, etc. being already set by the surrounding shell.
+      const env = { ...process.env };
+
+      const args = [
+        "-p", prompt,
+        "-s",                  // silent — only the response, no stats lines
+        "--allow-all-tools",   // required for non-interactive mode (copilot v0.0.367+)
+        "--no-color",          // strip ANSI just in case the silent flag misses something
+        `--model=${this.model}`,
+      ];
+
+      // shell:true on Windows so .cmd shims (npm-installed copilot) execute correctly.
+      const useShell = process.platform === "win32";
+      const child = spawn("copilot", args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+        shell: useShell,
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      child.on("error", (err) => {
+        // ENOENT typically = `copilot` not on PATH. Give a hint pointing at the install step.
+        const hint = (err as NodeJS.ErrnoException).code === "ENOENT"
+          ? '\n  💡 Install with: npm install -g @github/copilot (or pre-install in your CI image).'
+          : '';
+        reject(new Error(`Copilot CLI error: ${err.message}${hint}`));
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve(stdout.trim());
+          return;
+        }
+        const detail = stderr.trim() || stdout.trim() || `exited with code ${code}`;
+        // Common failure modes get specific hints.
+        let hint = '';
+        if (/unauthor|forbidden|401|403/i.test(detail)) {
+          hint = '\n  💡 Check that GITHUB_TOKEN is a PAT with "Copilot Requests" permission and SSO-authorized for your enterprise.';
+        } else if (/trust|untrusted folder/i.test(detail)) {
+          hint = '\n  💡 Pre-trust the workspace by writing ~/.copilot/config.json with {"trusted_folders":["<workspace>","/tmp"]}.';
+        } else if (/proxy|ENETUNREACH|ECONNREFUSED|getaddrinfo/i.test(detail)) {
+          hint = '\n  💡 Set HTTPS_PROXY / NODE_EXTRA_CA_CERTS for your corporate network.';
+        }
+        reject(new Error(`Copilot CLI failed: ${detail}${hint}`));
+      });
+    });
+  }
+}
+
 export function createAIProvider(config: AIConfig): AIProvider {
   switch (config.provider) {
     case "openai":
-      return new OpenAIProvider(config.apiKey, config.model ?? "gpt-4o-mini");
+      return new OpenAIProvider(config.apiKey, config.model ?? "gpt-4o-mini", config.baseUrl);
     case "azure-openai":
       if (!config.baseUrl) {
         throw new Error("Azure OpenAI requires a base URL (--ai-base-url or IRA_AI_BASE_URL)");
@@ -379,6 +475,8 @@ export function createAIProvider(config: AIConfig): AIProvider {
       return new OllamaProvider(config.model, config.baseUrl);
     case "amp":
       return new AmpCliProvider(config.model);
+    case "copilot-cli":
+      return new CopilotCliProvider(config.model);
     default:
       throw new Error(`Unsupported AI provider: ${config.provider as string}`);
   }

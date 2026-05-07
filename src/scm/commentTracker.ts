@@ -1,8 +1,16 @@
 import type { BitbucketConfig, GitHubConfig } from "../types/config.js";
 import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 
+// Either marker identifies a comment as IRA-authored:
+//   - IRA_MARKER:    legacy "detailed" format header
+//   - IRA_HTML_TAG:  hidden HTML marker present in BOTH compact & detailed formats
 const IRA_MARKER = "🔍 **IRA Review**";
+const IRA_HTML_TAG = "<!-- ira:";
 const IRA_META_RE = /<!-- ira:file=([^;]+);line=(\d+);rule=([^\s]+) -->/;
+
+function isIraComment(text: string): boolean {
+  return text.includes(IRA_HTML_TAG) || text.includes(IRA_MARKER);
+}
 
 interface BitbucketComment {
   id: number;
@@ -102,7 +110,7 @@ export class CommentTracker {
     while (url) {
       const page = await this.fetchBitbucketPage(url);
       for (const comment of page.values) {
-        if (!comment.content.raw.includes(IRA_MARKER)) continue;
+        if (!isIraComment(comment.content.raw)) continue;
 
         // Prefer structured marker for dedup
         const meta = comment.content.raw.match(IRA_META_RE);
@@ -128,7 +136,7 @@ export class CommentTracker {
       const comments = await this.fetchGitHubComments(url);
 
       for (const comment of comments) {
-        if (!comment.body.includes(IRA_MARKER)) continue;
+        if (!isIraComment(comment.body)) continue;
 
         const meta = comment.body.match(IRA_META_RE);
         if (meta) {
@@ -149,7 +157,7 @@ export class CommentTracker {
       const comments = await this.fetchGitHubComments(url);
 
       for (const comment of comments) {
-        if (!comment.body.includes(IRA_MARKER)) continue;
+        if (!isIraComment(comment.body)) continue;
 
         const meta = comment.body.match(IRA_META_RE);
         if (meta) {
@@ -178,7 +186,7 @@ export class CommentTracker {
       const data = await this.fetchBitbucketServerPage(url);
 
       for (const comment of data.values) {
-        if (!comment.text.includes(IRA_MARKER)) continue;
+        if (!isIraComment(comment.text)) continue;
 
         const meta = comment.text.match(IRA_META_RE);
         if (meta) {

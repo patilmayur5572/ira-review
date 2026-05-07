@@ -7,10 +7,11 @@ import { SonarClient } from "./sonarClient.js";
 import { filterIssues, groupIssuesByFile } from "./issueProcessor.js";
 import { detectFramework } from "../frameworks/detector.js";
 import { buildPrompt, buildStandalonePrompt, parseStandaloneResponse, annotateDiffWithLineNumbers, resolveIssueLocations } from "../ai/promptBuilder.js";
-import { loadRulesFile, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "../utils/rulesFile.js";
+import { loadRulesFile, loadRulesFromUrl, filterRulesByPath, formatRulesForPrompt, loadSensitiveAreas, matchSensitiveArea, formatSensitiveAreaForPrompt } from "../utils/rulesFile.js";
 import { createAIProvider } from "../ai/aiClient.js";
 import type { AIFoundIssue } from "../ai/promptBuilder.js";
 import { BitbucketClient } from "../scm/bitbucket.js";
+import { BitbucketServerClient } from "../scm/bitbucketServer.js";
 import { GitHubClient } from "../scm/github.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
 import { CommentTracker, deduplicateKey } from "../scm/commentTracker.js";
@@ -87,10 +88,14 @@ export class ReviewEngine {
       warnings.push(`Framework detection failed: ${msg}`);
     }
 
-    // 4. Load team rules
-    const teamRules = loadRulesFile(repoPath);
+    // 4. Load team rules — prefer URL when configured (CI agents without full checkout),
+    //    otherwise read .ira-rules.json from disk.
+    const teamRules = this.config.rulesUrl
+      ? await loadRulesFromUrl(this.config.rulesUrl)
+      : loadRulesFile(repoPath);
     if (teamRules.length > 0) {
-      console.log(`  Team rules: ${teamRules.length} loaded from .ira-rules.json`);
+      const source = this.config.rulesUrl ? this.config.rulesUrl : ".ira-rules.json";
+      console.log(`  Team rules: ${teamRules.length} loaded from ${source}`);
     }
     const sensitiveAreas = loadSensitiveAreas(repoPath);
 
@@ -405,10 +410,7 @@ export class ReviewEngine {
     // 10. Deduplicate: skip issues already commented on
     let newComments = comments;
     if (!this.config.dryRun) {
-      const tracker =
-        this.config.scmProvider === "github"
-          ? new CommentTracker(this.config.scm as GitHubConfig, "github")
-          : new CommentTracker(this.config.scm as BitbucketConfig);
+      const tracker = this.createCommentTracker();
       const existing = await tracker.getExistingIraComments(pullRequestId);
       newComments = comments.filter(
         (c) => !existing.has(deduplicateKey(c.filePath, c.line, c.rule)),
@@ -496,11 +498,39 @@ export class ReviewEngine {
     return result;
   }
 
+  /**
+   * Build the CommentTracker matching the active SCM. Bitbucket Server uses a
+   * different REST shape for comments, so it gets the dedicated "bitbucket-server"
+   * variant — which already exists in CommentTracker (constructor overload).
+   */
+  private createCommentTracker(): CommentTracker {
+    if (this.config.scmProvider === "github") {
+      return new CommentTracker(this.config.scm as GitHubConfig, "github");
+    }
+    const bb = this.config.scm as BitbucketConfig;
+    if (bb.type === "server") {
+      return new CommentTracker(
+        {
+          baseUrl: (bb.baseUrl ?? "").replace(/\/+$/, "").replace(/\/rest\/api\/1\.0$/, ""),
+          token: bb.token,
+          project: bb.workspace,
+          repoSlug: bb.repoSlug,
+        },
+        "bitbucket-server",
+      );
+    }
+    return new CommentTracker(bb);
+  }
+
   private createSCMClient(): SCMProvider {
     if (this.config.scmProvider === "github") {
       return new GitHubClient(this.config.scm as GitHubConfig);
     }
-    return new BitbucketClient(this.config.scm as BitbucketConfig);
+    const bb = this.config.scm as BitbucketConfig;
+    if (bb.type === "server") {
+      return new BitbucketServerClient(bb, { commentStyle: this.config.commentStyle });
+    }
+    return new BitbucketClient(bb);
   }
 
   private printComment(comment: ReviewComment): void {

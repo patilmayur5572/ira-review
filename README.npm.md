@@ -10,6 +10,8 @@ npx ira-review review --pr 42 --scm-provider github \
 
 No install required. Drop `--dry-run` to post comments directly on the PR. For Bitbucket, replace the GitHub flags with `--bitbucket-token` and `--repo`.
 
+> 💡 **Prefer reviewing inside your editor?** IRA also ships as a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=ira-review.ira-review-vscode) (available since earlier 3.x versions) — same engine, with inline diagnostics, codelens, and one-click "Post to PR".
+
 ---
 
 ## What You Get
@@ -37,6 +39,7 @@ Each issue is posted as an inline comment on the exact PR line with explanation,
 - Evidence-based reviews — 7 categories (security, business logic, race conditions, data consistency, async, error handling, defensive coding), each with explicit false-positive exclusions. Issues without concrete evidence are filtered out.
 - Risk scoring (0-100) with severity breakdown and PR labels
 - Inline AI comments with explanation, impact, and minimal BEFORE → AFTER fix
+- Two-pass critical review (`--ai-model-critical`) — bulk pass uses your everyday model; only `CRITICAL`/`BLOCKER` findings are re-run against a stronger model, keeping premium-request cost low while preserving deep analysis on what matters
 - JIRA acceptance criteria validation with per-criterion pass/fail and edge case detection
 - JIRA AC auto-detection — finds AC from custom field or description automatically
 - Custom team review rules via `.ira-rules.json` (see below)
@@ -134,7 +137,9 @@ All optional. IRA works with just an SCM token and an AI key.
 
 | What you want | Flags to add |
 |---|---|
-| JIRA validation | `--jira-url` `--jira-email` `--jira-token` `--jira-ticket PROJ-123` |
+| JIRA Cloud validation | `--jira-url` `--jira-email` `--jira-token` `--jira-ticket PROJ-123` |
+| JIRA Server / DC | `--jira-url` `--jira-type server` `--jira-token <PAT>` `--jira-ticket PROJ-123` |
+| Bitbucket Server / DC | `--bitbucket-type server` `--bitbucket-url https://bitbucket.example.com` `--repo PROJECT/repo-slug` |
 | SonarQube enrichment | `--sonar-url` `--sonar-token` `--project-key my-project` |
 | Test generation | `--generate-tests --test-framework vitest` |
 | Slack notifications | `--slack-webhook https://hooks.slack.com/services/xxx` |
@@ -142,6 +147,10 @@ All optional. IRA works with just an SCM token and an AI key.
 | Only notify on high risk | `--notify-min-risk high` |
 | Use Anthropic | `--ai-provider anthropic` |
 | Use Ollama (free, local) | `--ai-provider ollama` |
+| Use GitHub Copilot CLI (CI) | `--ai-provider copilot-cli` (needs `@github/copilot` installed + `GITHUB_TOKEN` with Copilot Requests scope; respects `GH_HOST`) |
+| OpenAI-compatible gateway | `--ai-base-url https://your-llm-proxy/v1` (GitHub Models, LiteLLM, internal proxy…) |
+| Rules from URL (no checkout) | `--rules-url https://bitbucket.example.com/.../.ira-rules.json` |
+| Compact / detailed comments | `--comment-style compact` (default) or `--comment-style detailed` |
 
 ---
 
@@ -172,12 +181,12 @@ CLI flags override env vars, which override the config file. Token fields are bl
 
 **SCM:** GitHub, GitHub Enterprise, Bitbucket Cloud, Bitbucket Server/Data Center
 
-**AI:** OpenAI (default), Azure OpenAI, Anthropic, Ollama (local, no key needed), AMP CLI (VS Code extension)
+**AI:** OpenAI (default), Azure OpenAI, Anthropic, Ollama (local, no key needed), GitHub Copilot CLI (CI-friendly, uses your Copilot entitlement, no API key), AMP CLI (VS Code extension)
 
 ## Requirements
 
 - Node.js 18+
-- An AI provider API key (or Ollama running locally, or AMP CLI / GitHub Copilot for the VS Code extension)
+- An AI provider API key (or Ollama running locally, or GitHub Copilot CLI for headless / CI use, or AMP CLI / GitHub Copilot for the VS Code extension)
 
 ## Security
 

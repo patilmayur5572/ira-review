@@ -98,7 +98,7 @@ flowchart LR
 
 ```
 src/
-  ai/           AI provider abstraction (OpenAI, Anthropic, Azure, Ollama, AMP)
+  ai/           AI provider abstraction (OpenAI, Anthropic, Azure, Ollama, AMP, Copilot CLI)
   core/         Review engine, risk scorer, acceptance validator, test generator
   scm/          GitHub and Bitbucket clients (diff, comments, labels, build status)
   integrations/ JIRA client, Slack/Teams notifier
@@ -210,7 +210,7 @@ IRA is not a SaaS product. There is no hosted service, no telemetry, no analytic
 | | CLI | VS Code Extension |
 |---|---|---|
 | **Use case** | CI pipelines, scripting, headless environments | Interactive development |
-| **AI default** | OpenAI (requires API key) | GitHub Copilot (zero config), AMP CLI also supported |
+| **AI default** | OpenAI (requires API key); GitHub Copilot CLI also supported for enterprise CI (`--ai-provider copilot-cli`, no API key) | GitHub Copilot (zero config), AMP CLI also supported |
 | **Auth** | Environment variables or CLI flags | VS Code OAuth + OS keychain |
 | **Output** | Terminal + PR comments | Inline diagnostics, CodeLens, TreeView, risk badge |
 | **JIRA/Sonar** | CLI flags or env vars | VS Code settings |
@@ -344,6 +344,101 @@ pipelines:
 
 ---
 
+## Enterprise: Bitbucket Server / Data Center
+
+For self-hosted Bitbucket Server (a.k.a. Data Center), pass `--bitbucket-type server`
+along with your Bitbucket base URL and a Personal Access Token. The `--repo` flag uses
+`PROJECT/repo-slug` format (project keys are usually uppercase).
+
+```bash
+npx ira-review review \
+  --pr 1234 \
+  --scm-provider bitbucket \
+  --bitbucket-type server \
+  --bitbucket-url https://bitbucket.example.com \
+  --bitbucket-token "$BITBUCKET_PAT" \
+  --repo MYPROJ/my-service \
+  --ai-api-key "$OPENAI_API_KEY"
+```
+
+The type is auto-detected from `--bitbucket-url` (anything other than `api.bitbucket.org`
+defaults to `server`), so the flag is usually optional. Set it explicitly if your
+Server instance sits behind a CDN whose hostname looks like Cloud.
+
+## Enterprise: JIRA Server / Data Center
+
+JIRA Server uses Bearer auth with a Personal Access Token (Profile → Personal Access
+Tokens) — the email field is ignored. Pass `--jira-type server` if your URL is not
+on `*.atlassian.net`:
+
+```bash
+npx ira-review review \
+  --pr 1234 \
+  --scm-provider bitbucket \
+  --bitbucket-type server \
+  --bitbucket-url https://bitbucket.example.com \
+  --bitbucket-token "$BITBUCKET_PAT" \
+  --repo MYPROJ/my-service \
+  --jira-url https://jira.example.com \
+  --jira-type server \
+  --jira-token "$JIRA_PAT" \
+  --jira-ticket PROJ-123 \
+  --ai-api-key "$OPENAI_API_KEY"
+```
+
+## Enterprise: Jenkins quickstart
+
+Works with Jenkins on Linux **and Windows agents** behind a corporate proxy. IRA
+auto-detects `JENKINS_URL` and skips the first-run safety prompt.
+
+```groovy
+stage('IRA Review') {
+  when { changeRequest() }
+  steps {
+    withCredentials([
+      string(credentialsId: 'bitbucket-pat',  variable: 'BB_TOKEN'),
+      string(credentialsId: 'jira-pat',       variable: 'JIRA_TOKEN'),
+      string(credentialsId: 'ai-api-key',     variable: 'AI_KEY'),
+    ]) {
+      sh '''
+        npx --yes ira-review@latest review \\
+          --pr "$CHANGE_ID" \\
+          --scm-provider bitbucket \\
+          --bitbucket-type server \\
+          --bitbucket-url "$BITBUCKET_URL" \\
+          --bitbucket-token "$BB_TOKEN" \\
+          --repo "$BITBUCKET_PROJECT/$BITBUCKET_REPO" \\
+          --jira-url "$JIRA_URL" \\
+          --jira-type server \\
+          --jira-token "$JIRA_TOKEN" \\
+          --ai-api-key "$AI_KEY"
+      '''
+    }
+  }
+  environment {
+    HTTPS_PROXY          = "${env.CORP_PROXY_URL}"
+    NODE_EXTRA_CA_CERTS  = "${env.CORP_CA_BUNDLE_PEM}"
+  }
+}
+```
+
+Tips for Jenkins / corporate networks:
+
+- **CI auto-detection** — IRA recognizes `JENKINS_URL`, `GITLAB_CI`, `GITHUB_ACTIONS`,
+  `TF_BUILD`, `BUILDKITE`, `CIRCLECI`, and `CI`.
+- **Proxy + corporate CA** — set `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` (path to your
+  PEM bundle). IRA fails fast with a clear error if `NODE_EXTRA_CA_CERTS` points to
+  a missing file, and prints the resolved AI endpoint / proxy / CA bundle on startup.
+- **No full checkout?** — point `--rules-url` at the raw URL of your `.ira-rules.json`
+  in Bitbucket / GitHub instead of relying on a local file.
+- **AI gateway** — point `--ai-base-url` at any OpenAI-compatible endpoint (GitHub
+  Models, an internal LLM proxy, LiteLLM, vLLM…). Keep `--ai-provider openai`.
+- **Comment style** — use `--comment-style compact` (default) for terse,
+  severity-first inline comments. `--comment-style detailed` keeps the legacy
+  Explanation / Impact / Suggested Fix block.
+
+---
+
 ## Adding JIRA and SonarQube
 
 Both integrations are optional and additive. IRA works with just an SCM provider and an AI key.
@@ -393,8 +488,9 @@ npx ira-review review \
 | Provider | Notes |
 |---|---|
 | GitHub Copilot | VS Code only, zero config, uses existing session |
+| GitHub Copilot CLI | CLI/CI via `--ai-provider copilot-cli`. Requires `@github/copilot` installed (`npm i -g @github/copilot`) and `GITHUB_TOKEN` set to a PAT with **Copilot Requests** permission. Honours `GH_HOST` for GitHub Enterprise tenants. Officially-sanctioned path for using Copilot from non-IDE contexts. |
 | AMP CLI | VS Code only, requires `amp` CLI installed and authenticated (`amp login`) |
-| OpenAI | Default for CLI |
+| OpenAI | Default for CLI. Pass `--ai-base-url` to target any OpenAI-compatible gateway (GitHub Models, internal LLM proxy, LiteLLM, vLLM, …) |
 | Azure OpenAI | Requires `--ai-base-url` and `--ai-deployment` |
 | Anthropic | Pass key with `--ai-api-key` |
 | Ollama | Fully local, no API key needed |

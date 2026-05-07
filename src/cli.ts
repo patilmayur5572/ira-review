@@ -54,9 +54,55 @@ function getCredentialsDir(): string {
   return join(process.env.HOME ?? "", ".config", "ira");
 }
 
+/** CI environment variables we treat as "running in CI" — broader than just `CI`. */
+const CI_ENV_VARS = [
+  "CI",
+  "JENKINS_URL",
+  "GITLAB_CI",
+  "GITHUB_ACTIONS",
+  "TF_BUILD",        // Azure DevOps
+  "BUILDKITE",
+  "CIRCLECI",
+] as const;
+
+function isCiEnvironment(): boolean {
+  return CI_ENV_VARS.some((v) => !!process.env[v]);
+}
+
 function isFirstRun(): boolean {
-  if (process.env.CI) return false;
+  if (isCiEnvironment()) return false;
   return !existsSync(resolve(process.cwd(), ".irarc.json")) && !existsSync(resolve(process.cwd(), "ira.config.json"));
+}
+
+/**
+ * Print resolved network/AI/proxy configuration on startup so CI debugging is fast.
+ * Fail fast if NODE_EXTRA_CA_CERTS points to a missing file (a common Windows/Jenkins
+ * misconfiguration that otherwise surfaces as a confusing TLS error mid-run).
+ */
+function logEnvironmentInfo(config: { ai: { provider: string; model?: string; baseUrl?: string } }): void {
+  const proxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY ?? process.env.https_proxy ?? process.env.http_proxy;
+  const caBundle = process.env.NODE_EXTRA_CA_CERTS;
+  const sslCert = process.env.SSL_CERT_FILE;
+
+  step("🛰️", `AI provider:       ${config.ai.provider}${config.ai.model ? ` (${config.ai.model})` : ""}`);
+  if (config.ai.baseUrl) {
+    step("🔗", `AI endpoint:       ${config.ai.baseUrl}`);
+  }
+  if (proxy) {
+    step("🌐", `HTTP proxy:        ${proxy}`);
+  }
+  if (caBundle) {
+    if (!existsSync(caBundle)) {
+      throw new Error(
+        `NODE_EXTRA_CA_CERTS is set to "${caBundle}" but that file does not exist.\n` +
+        `  💡 Either point it at a valid PEM bundle or unset the variable.`,
+      );
+    }
+    step("🔐", `CA bundle:         ${caBundle}`);
+  }
+  if (sslCert) {
+    step("🔐", `SSL_CERT_FILE:     ${sslCert}`);
+  }
 }
 
 // ─── Program ────────────────────────────────────────────────
@@ -66,7 +112,7 @@ const program = new Command();
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
-  .version("2.0.0");
+  .version("3.1.0");
 
 program
   .command("review")
@@ -77,8 +123,9 @@ program
   .option("--pr <id>", "Pull request ID (or IRA_PR)")
   .option("--scm-provider <provider>", "SCM provider: bitbucket or github (or IRA_SCM_PROVIDER)")
   .option("--bitbucket-token <token>", "Bitbucket API token (or IRA_BITBUCKET_TOKEN)")
-  .option("--repo <repo>", "Bitbucket workspace/repo-slug (or IRA_REPO)")
+  .option("--repo <repo>", "Bitbucket workspace/repo-slug (Cloud) or PROJECT/repo-slug (Server) (or IRA_REPO)")
   .option("--bitbucket-url <url>", "Bitbucket base URL (or IRA_BITBUCKET_URL)")
+  .option("--bitbucket-type <type>", "Bitbucket type: cloud or server (auto-detects from URL if omitted; or IRA_BITBUCKET_TYPE)")
   .option("--github-token <token>", "GitHub API token (or IRA_GITHUB_TOKEN)")
   .option("--github-repo <repo>", "GitHub owner/repo (or IRA_GITHUB_REPO)")
   .option("--github-url <url>", "GitHub Enterprise URL (or IRA_GITHUB_URL)")
@@ -106,6 +153,8 @@ program
   .option("--test-framework <framework>", "Test framework: jest, vitest, mocha, playwright, cypress, gherkin, pytest, junit (default: jest)")
   .option("--config <path>", "Path to config file (default: auto-detect .irarc.json / ira.config.json)")
   .option("--no-config-file", "Disable auto-loading config file from repo")
+  .option("--rules-url <url>", "Fetch .ira-rules.json from URL (raw HTTP) — useful when CI has no full checkout (or IRA_RULES_URL)")
+  .option("--comment-style <style>", "Comment formatter style: compact (default) or detailed (or IRA_COMMENT_STYLE)")
   .action(async (opts) => {
     try {
       console.log(`\n🔍 IRA — Scanning PR before your reviewers do\n`);
@@ -126,6 +175,9 @@ program
         ...(opts.bitbucketToken && { bitbucketToken: opts.bitbucketToken }),
         ...(opts.repo && { repo: opts.repo }),
         ...(opts.bitbucketUrl && { bitbucketUrl: opts.bitbucketUrl }),
+        ...(opts.bitbucketType && { bitbucketType: opts.bitbucketType }),
+        ...(opts.rulesUrl && { rulesUrl: opts.rulesUrl }),
+        ...(opts.commentStyle && { commentStyle: opts.commentStyle }),
         ...(opts.githubToken && { githubToken: opts.githubToken }),
         ...(opts.githubRepo && { githubRepo: opts.githubRepo }),
         ...(opts.githubUrl && { githubUrl: opts.githubUrl }),
@@ -162,6 +214,9 @@ program
 
       const mode = config.sonar ? "Sonar + AI" : "AI-only";
       step("✓", `Config loaded — ${mode} mode, ${config.ai.provider}, PR #${config.pullRequestId}`);
+
+      // Print resolved AI/proxy/CA env so CI debugging is fast; fail fast on missing CA bundle.
+      logEnvironmentInfo(config);
 
       // Step 2: Run the review engine
       step("⏳", "Fetching PR diff and reviewing your code…");

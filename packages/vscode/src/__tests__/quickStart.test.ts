@@ -81,14 +81,14 @@ beforeEach(() => {
 describe('extractBitbucketServerBaseUrl', () => {
   it('extracts base URL from HTTPS clone URL', () => {
     expect(
-      extractBitbucketServerBaseUrl('https://bitbucket.srv.westpac.com.au/scm/PROJECT/repo.git'),
-    ).toBe('https://bitbucket.srv.westpac.com.au');
+      extractBitbucketServerBaseUrl('https://bitbucket.example.com/scm/PROJECT/repo.git'),
+    ).toBe('https://bitbucket.example.com');
   });
 
   it('extracts base URL from SSH clone URL with port', () => {
     expect(
-      extractBitbucketServerBaseUrl('ssh://git@bitbucket.srv.westpac.com.au:7999/PROJECT/repo.git'),
-    ).toBe('https://bitbucket.srv.westpac.com.au');
+      extractBitbucketServerBaseUrl('ssh://git@bitbucket.example.com:7999/PROJECT/repo.git'),
+    ).toBe('https://bitbucket.example.com');
   });
 
   it('extracts base URL from SCP-style SSH URL', () => {
@@ -106,12 +106,12 @@ describe('extractBitbucketServerBaseUrl', () => {
 
 describe('suggestJiraUrlFromBitbucket', () => {
   it('swaps bitbucket.* host for jira.*', () => {
-    expect(suggestJiraUrlFromBitbucket('https://bitbucket.srv.westpac.com.au'))
-      .toBe('https://jira.srv.westpac.com.au');
+    expect(suggestJiraUrlFromBitbucket('https://bitbucket.example.com'))
+      .toBe('https://jira.example.com');
   });
 
   it('returns empty string for non-bitbucket-prefixed hosts', () => {
-    expect(suggestJiraUrlFromBitbucket('https://scm.westpac.com.au')).toBe('');
+    expect(suggestJiraUrlFromBitbucket('https://scm.acme.com')).toBe('');
   });
 
   it('returns empty string for empty input', () => {
@@ -147,7 +147,7 @@ describe('quickStart workspace guard', () => {
 
 describe('quickStart - Bitbucket Server happy path', () => {
   it('detects BB Server URL, prompts for token, saves both, configures JIRA', async () => {
-    mockRemoteUrl = 'https://bitbucket.srv.westpac.com.au/scm/PROJECT/repo.git';
+    mockRemoteUrl = 'https://bitbucket.example.com/scm/PROJECT/repo.git';
     const updateMock = setConfigStub({
       bitbucketUrl: '',
       jiraUrl: '',
@@ -175,7 +175,7 @@ describe('quickStart - Bitbucket Server happy path', () => {
     // Step: JIRA already not set, so resolveJiraCredentials runs
     mockGetJiraToken.mockResolvedValue('');
     mockResolveJira.mockResolvedValue({
-      url: 'https://jira.srv.westpac.com.au',
+      url: 'https://jira.example.com',
       type: 'server',
       email: '',
       token: 'jira-tok',
@@ -191,7 +191,7 @@ describe('quickStart - Bitbucket Server happy path', () => {
     // Confirms BB URL was persisted to settings
     expect(updateMock).toHaveBeenCalledWith(
       'bitbucketUrl',
-      'https://bitbucket.srv.westpac.com.au',
+      'https://bitbucket.example.com',
       expect.anything(),
     );
 
@@ -201,13 +201,13 @@ describe('quickStart - Bitbucket Server happy path', () => {
     // Confirms JIRA URL suggestion was persisted
     expect(updateMock).toHaveBeenCalledWith(
       'jiraUrl',
-      'https://jira.srv.westpac.com.au',
+      'https://jira.example.com',
       expect.anything(),
     );
   });
 
   it('opens the BB token page in browser when user clicks "Open Token Page"', async () => {
-    mockRemoteUrl = 'https://bitbucket.srv.westpac.com.au/scm/PROJECT/repo.git';
+    mockRemoteUrl = 'https://bitbucket.example.com/scm/PROJECT/repo.git';
     setConfigStub({ bitbucketUrl: '', aiProvider: 'copilot' });
 
     (vscode.window.showQuickPick as any)
@@ -234,7 +234,7 @@ describe('quickStart - Bitbucket Server happy path', () => {
   });
 
   it('cancels gracefully when user dismisses BB URL confirmation', async () => {
-    mockRemoteUrl = 'https://bitbucket.srv.westpac.com.au/scm/PROJECT/repo.git';
+    mockRemoteUrl = 'https://bitbucket.example.com/scm/PROJECT/repo.git';
     setConfigStub({ bitbucketUrl: '', aiProvider: 'copilot' });
 
     (vscode.window.showQuickPick as any).mockResolvedValueOnce(undefined);
@@ -246,8 +246,8 @@ describe('quickStart - Bitbucket Server happy path', () => {
   });
 
   it('skips Bitbucket sign-in when token already exists', async () => {
-    mockRemoteUrl = 'https://bitbucket.srv.westpac.com.au/scm/PROJECT/repo.git';
-    setConfigStub({ bitbucketUrl: 'https://bitbucket.srv.westpac.com.au', aiProvider: 'copilot' });
+    mockRemoteUrl = 'https://bitbucket.example.com/scm/PROJECT/repo.git';
+    setConfigStub({ bitbucketUrl: 'https://bitbucket.example.com', aiProvider: 'copilot' });
 
     mockGetSession.mockResolvedValue({ provider: 'bitbucket', accessToken: 'existing', accountName: 'Bitbucket' });
     mockGetJiraToken.mockResolvedValue('');

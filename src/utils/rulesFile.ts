@@ -50,6 +50,86 @@ function loadRawRulesFile(cwd?: string): Record<string, unknown> | null {
   return parsed as Record<string, unknown>;
 }
 
+/**
+ * Fetch and parse .ira-rules.json from a remote URL.
+ * Useful for CI agents that don't have a full repo checkout (e.g. Jenkins
+ * sparse checkouts) — point this at a Bitbucket/GitHub raw URL.
+ *
+ * Returns null on any HTTP/parse failure (caller falls back to local file).
+ */
+export async function loadRulesFromUrl(
+  url: string,
+  headers: Record<string, string> = {},
+): Promise<IraRule[]> {
+  try {
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      console.warn(`IRA: Could not fetch rules from ${url} (HTTP ${response.status}). Team rules will not be enforced.`);
+      return [];
+    }
+    const raw = await response.text();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      console.warn(`IRA: Rules at ${url} are not valid JSON. Team rules will not be enforced.`);
+      return [];
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      console.warn(`IRA: Rules at ${url} are not a valid object. Team rules will not be enforced.`);
+      return [];
+    }
+    return parseRules(parsed as Record<string, unknown>);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(`IRA: Failed to fetch rules from ${url}: ${msg}. Team rules will not be enforced.`);
+    return [];
+  }
+}
+
+/** Shared parser used by both file- and URL-based loaders. */
+function parseRules(parsed: Record<string, unknown>): IraRule[] {
+  if (!Array.isArray(parsed.rules)) {
+    console.warn('IRA: rules payload is invalid. Expected { "rules": [...] } with a flat array. Team rules will not be enforced.');
+    return [];
+  }
+
+  const rawRules = parsed.rules as unknown[];
+  const valid: IraRule[] = [];
+
+  for (const entry of rawRules) {
+    if (!entry || typeof entry !== 'object') {
+      console.warn("IRA: Skipping invalid rule — missing 'message' or 'severity'");
+      continue;
+    }
+    const rule = entry as Record<string, unknown>;
+    if (typeof rule.message !== 'string' || typeof rule.severity !== 'string') {
+      console.warn("IRA: Skipping invalid rule — missing 'message' or 'severity'");
+      continue;
+    }
+    if (!VALID_SEVERITIES.includes(rule.severity as typeof VALID_SEVERITIES[number])) {
+      console.warn(`IRA: Skipping rule — invalid severity '${rule.severity}'. Use BLOCKER, CRITICAL, MAJOR, or MINOR.`);
+      continue;
+    }
+    valid.push({
+      message: rule.message,
+      severity: rule.severity as IraRule['severity'],
+      ...(typeof rule.id === 'string' && { id: rule.id }),
+      ...(typeof rule.bad === 'string' && { bad: rule.bad }),
+      ...(typeof rule.good === 'string' && { good: rule.good }),
+      ...(Array.isArray(rule.paths) && { paths: rule.paths.filter((p): p is string => typeof p === 'string') }),
+      ...(typeof rule.author === 'string' && { author: rule.author }),
+      ...(typeof rule.createdAt === 'string' && { createdAt: rule.createdAt }),
+    });
+  }
+
+  if (valid.length > RULES_SOFT_WARN_THRESHOLD) {
+    console.warn(`IRA: rules payload has ${valid.length} rules (>${RULES_SOFT_WARN_THRESHOLD}). All will be enforced, but large rulesets can inflate the AI prompt and risk hitting model context limits. Tip: Move deterministic rules to ESLint and keep only nuanced, context-dependent rules in IRA.`);
+  }
+
+  return valid;
+}
+
 export function loadRulesFile(cwd?: string): IraRule[] {
   const parsed = loadRawRulesFile(cwd);
 

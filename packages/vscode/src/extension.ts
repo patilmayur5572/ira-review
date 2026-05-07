@@ -20,23 +20,19 @@ import { IraHistoryProvider } from './providers/historyTreeProvider';
 import { DashboardProvider } from './providers/dashboardProvider';
 import { setupOllama } from './services/ollamaSetup';
 import type { ReviewResult } from 'ira-review';
+import { formatReviewComment } from 'ira-review';
 import * as msg from './utils/messages';
 
-/** Format an IRA issue comment as markdown for posting to SCM. */
+/**
+ * Format an IRA issue comment as markdown for posting to SCM.
+ * Delegates to the shared formatter in ira-review so all three call sites
+ * (Cloud client, BB Server client, VS Code) emit identical comment shapes.
+ *
+ * Style stays "detailed" here to preserve byte-identical output for VS Code
+ * users — switching the extension default is a separate UX decision.
+ */
 function formatIssueComment(comment: { filePath: string; line: number; rule: string; severity: string; message: string; aiReview: { explanation: string; impact: string; suggestedFix: string } }): string {
-  const location = comment.line > 0 ? '' : `\n**File:** \`${comment.filePath}\`\n`;
-  return [
-    `🔍 **IRA Review** - \`${comment.rule}\` (${comment.severity})`,
-    location,
-    `> ${comment.message}`,
-    '',
-    `**Explanation:** ${comment.aiReview.explanation}`,
-    '',
-    `**Impact:** ${comment.aiReview.impact}`,
-    '',
-    `**Suggested Fix:**`,
-    comment.aiReview.suggestedFix,
-  ].join('\n');
+  return formatReviewComment(comment, { style: 'detailed' });
 }
 
 /** Detect whether this is a Bitbucket Server/DC instance (vs Cloud). */

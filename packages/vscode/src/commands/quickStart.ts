@@ -100,8 +100,8 @@ async function detectScm(workspaceRoot: string): Promise<DetectedScm> {
   }
 
   // Bitbucket Server / Data Center: URLs contain '/scm/' between host and project
-  // e.g. https://bitbucket.srv.westpac.com.au/scm/PROJECT/repo.git
-  //      ssh://git@bitbucket.srv.westpac.com.au:7999/PROJECT/repo.git
+  // e.g. https://bitbucket.example.com/scm/PROJECT/repo.git
+  //      ssh://git@bitbucket.example.com:7999/PROJECT/repo.git
   if (lower.includes('/scm/') || lower.includes('bitbucket')) {
     const baseUrl = extractBitbucketServerBaseUrl(remoteUrl);
     return { scm: 'bitbucket-server', baseUrl, remoteUrl };

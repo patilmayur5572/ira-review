@@ -2,6 +2,18 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.1.0] — 2026-05-07
+
+### Changed
+
+- **TreeView labels** — `History ⭐` and `Trends ⭐` are now plain `History` and `Trends`. The star glyph was creating a misleading impression of "starred / paid / premium" features; IRA has no paid tier — every feature is available to every user. Pure cosmetic cleanup, no behaviour change.
+- **Comment formatter delegated to the shared `ira-review` core** — `extension.ts` and `commands/reviewPR.ts` now both call `formatReviewComment` from the `ira-review` package (style: `detailed`) instead of duplicating the markdown template. Output is byte-identical to 3.0.2 for VS Code users; the change ensures all three call sites (Bitbucket Cloud client, BB Server client, VS Code) emit consistent comments. Bumps the runtime floor for the bundled `ira-review` to 3.1.0.
+
+### Compatibility
+
+- **Underlying CLI**: the bundled [`ira-review`](https://www.npmjs.com/package/ira-review) is now 3.1.0, which adds the GitHub Copilot CLI provider, full Bitbucket Server / Data Center support, JIRA Server / DC, two-pass critical review (`--ai-model-critical`), and centralised team rules (`--rules-url`). These are accessible from the npm CLI; the extension itself continues to use VS Code's built-in Copilot OAuth as its zero-config default. See the [ira-review CHANGELOG](https://github.com/patilmayur5572/ira-review/blob/main/CHANGELOG.md#310--2026-05-07) for the full list.
+- **Breaking**: none — all existing commands, settings, and keybindings unchanged.
+
 ## [3.0.2] — 2026-05-05
 
 ### Changed

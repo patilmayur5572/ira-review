@@ -6,11 +6,17 @@ export interface SonarConfig {
   projectKey: string;
 }
 
+/** "cloud" = api.bitbucket.org/2.0, "server" = self-hosted Bitbucket Server / Data Center (/rest/api/1.0). */
+export type BitbucketType = "cloud" | "server";
+
 export interface BitbucketConfig {
   baseUrl?: string;
   token: string;
+  /** Bitbucket Cloud workspace OR Bitbucket Server project key (server uses uppercase keys). */
   workspace: string;
   repoSlug: string;
+  /** Defaults to "cloud" when baseUrl is api.bitbucket.org or unset, otherwise "server". */
+  type?: BitbucketType;
 }
 
 export interface GitHubConfig {
@@ -20,7 +26,7 @@ export interface GitHubConfig {
   baseUrl?: string;
 }
 
-export type AIProviderType = "openai" | "azure-openai" | "anthropic" | "ollama" | "amp";
+export type AIProviderType = "openai" | "azure-openai" | "anthropic" | "ollama" | "amp" | "copilot-cli";
 
 export interface AIConfig {
   provider: AIProviderType;
@@ -44,6 +50,9 @@ export interface JiraConfig {
 
 export type SCMProviderType = "bitbucket" | "github";
 
+/** Comment formatter style — "compact" (default) or legacy "detailed". */
+export type CommentStyle = "compact" | "detailed";
+
 export interface IraConfig {
   sonar?: SonarConfig;
   scmProvider: SCMProviderType;
@@ -59,6 +68,10 @@ export interface IraConfig {
   generateTests?: boolean;
   testFramework?: TestFramework;
   jiraAcSource?: "customField" | "description" | "both";
+  /** Comment formatter style — defaults to "compact". */
+  commentStyle?: CommentStyle;
+  /** Optional URL to fetch .ira-rules.json from (HTTP) — useful when no local checkout exists. */
+  rulesUrl?: string;
 }
 
 export type RiskLevelThreshold = "low" | "medium" | "high" | "critical";

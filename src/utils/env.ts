@@ -17,7 +17,7 @@ function detectScm(): string {
     "  💡 Set --scm-provider (github or bitbucket), IRA_SCM_PROVIDER env var, or add scmProvider to .irarc.json",
   );
 }
-const VALID_AI_PROVIDERS: AIProviderType[] = ["openai", "azure-openai", "anthropic", "ollama"];
+const VALID_AI_PROVIDERS: AIProviderType[] = ["openai", "azure-openai", "anthropic", "ollama", "amp", "copilot-cli"];
 const VALID_SEVERITIES = ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"] as const;
 
 export function resolveConfigFromEnv(
@@ -30,10 +30,14 @@ export function resolveConfigFromEnv(
   if (!VALID_AI_PROVIDERS.includes(aiProvider as AIProviderType)) {
     throw new Error(`Invalid AI provider: "${aiProvider}". Must be one of: ${VALID_AI_PROVIDERS.join(", ")}`);
   }
+  // CLI-based providers (amp, copilot-cli) and local providers (ollama) get their auth
+  // from their own mechanism (e.g. GITHUB_TOKEN env for copilot, `amp login` session for amp,
+  // none for ollama) — not from --ai-api-key. Don't require one for those.
+  const cliBasedProvider = aiProvider === "ollama" || aiProvider === "amp" || aiProvider === "copilot-cli";
   const aiKey = overrides.aiApiKey
     ?? optionalEnv("IRA_AI_API_KEY")
     ?? optionalEnv("OPENAI_API_KEY")
-    ?? (aiProvider === "ollama" ? "" : undefined);
+    ?? (cliBasedProvider ? "" : undefined);
   if (aiKey === undefined) {
     throw new Error("Missing AI API key. Set IRA_AI_API_KEY or OPENAI_API_KEY environment variable.");
   }
@@ -67,6 +71,14 @@ export function resolveConfigFromEnv(
 
   const jiraAcSource = overrides.jiraAcSource ?? optionalEnv("IRA_JIRA_AC_SOURCE");
   const jiraTicket = overrides.jiraTicket ?? optionalEnv("IRA_JIRA_TICKET");
+
+  const commentStyleRaw = overrides.commentStyle ?? optionalEnv("IRA_COMMENT_STYLE");
+  if (commentStyleRaw && commentStyleRaw !== "compact" && commentStyleRaw !== "detailed") {
+    throw new Error(`Invalid comment-style: "${commentStyleRaw}". Must be "compact" or "detailed".`);
+  }
+  const commentStyle = (commentStyleRaw as "compact" | "detailed" | undefined);
+  const rulesUrl = overrides.rulesUrl ?? optionalEnv("IRA_RULES_URL");
+
   if (jiraTicket && !jiraConfig) {
     console.warn(
       "⚠️  --jira-ticket is set but JIRA credentials are incomplete (need jira-url, jira-email, jira-token). JIRA validation will be skipped.",
@@ -95,6 +107,8 @@ export function resolveConfigFromEnv(
     ...(overrides.generateTests && { generateTests: overrides.generateTests }),
     ...(overrides.testFramework && { testFramework: overrides.testFramework as IraConfig["testFramework"] }),
     ...(jiraAcSource && { jiraAcSource: jiraAcSource as IraConfig["jiraAcSource"] }),
+    ...(commentStyle && { commentStyle }),
+    ...(rulesUrl && { rulesUrl }),
   };
 }
 
@@ -115,12 +129,27 @@ function resolveSonarConfig(
   return { baseUrl, token, projectKey };
 }
 
+/**
+ * Auto-detect Bitbucket type from URL. api.bitbucket.org → cloud; anything else → server.
+ * Used as the default when --bitbucket-type / IRA_BITBUCKET_TYPE is not set.
+ */
+function detectBitbucketType(baseUrl: string | undefined): "cloud" | "server" {
+  if (!baseUrl) return "cloud";
+  return /api\.bitbucket\.org/i.test(baseUrl) ? "cloud" : "server";
+}
+
 function resolveBitbucketScmConfig(
   overrides: Partial<FlatConfig>,
   dryRun: boolean,
 ) {
   const bbToken = overrides.bitbucketToken ?? optionalEnv("IRA_BITBUCKET_TOKEN");
   const repo = overrides.repo ?? optionalEnv("IRA_REPO");
+  const bitbucketUrl = overrides.bitbucketUrl ?? optionalEnv("IRA_BITBUCKET_URL");
+  const explicitType = overrides.bitbucketType ?? optionalEnv("IRA_BITBUCKET_TYPE");
+  if (explicitType && explicitType !== "cloud" && explicitType !== "server") {
+    throw new Error(`Invalid bitbucket-type: "${explicitType}". Must be "cloud" or "server".`);
+  }
+  const bitbucketType = (explicitType as "cloud" | "server" | undefined) ?? detectBitbucketType(bitbucketUrl);
 
   if (!dryRun && (!bbToken || !repo)) {
     throw new Error(
@@ -128,19 +157,25 @@ function resolveBitbucketScmConfig(
     );
   }
 
+  // Cloud uses workspace/repo-slug; Server uses PROJECT/repo-slug. Same flag, same parsing.
   const [workspace = "", repoSlug = ""] = (repo ?? "").split("/");
   if (!dryRun && (!workspace || !repoSlug)) {
-    throw new Error("repo must be in workspace/repo-slug format");
+    const expectedFmt = bitbucketType === "server" ? "PROJECT/repo-slug" : "workspace/repo-slug";
+    throw new Error(`repo must be in ${expectedFmt} format`);
+  }
+
+  if (!dryRun && bitbucketType === "server" && !bitbucketUrl) {
+    throw new Error(
+      "Bitbucket Server requires --bitbucket-url (or IRA_BITBUCKET_URL) — e.g. https://bitbucket.example.com",
+    );
   }
 
   return {
     token: bbToken ?? "",
     workspace,
     repoSlug,
-    ...(() => {
-      const bitbucketUrl = overrides.bitbucketUrl ?? optionalEnv("IRA_BITBUCKET_URL");
-      return bitbucketUrl ? { baseUrl: bitbucketUrl } : {};
-    })(),
+    type: bitbucketType,
+    ...(bitbucketUrl && { baseUrl: bitbucketUrl }),
   };
 }
 
@@ -226,7 +261,10 @@ export interface FlatConfig {
   scmProvider?: string;
   bitbucketToken?: string;
   bitbucketUrl?: string;
+  bitbucketType?: string;
   repo?: string;
+  rulesUrl?: string;
+  commentStyle?: string;
   githubToken?: string;
   githubRepo?: string;
   githubUrl?: string;
