@@ -95,12 +95,26 @@ describe("BitbucketServerClient", () => {
     expect(lastBody.text).toContain("ira:file=src/foo/bar.ts");
   });
 
-  it("paginates comments via start/limit/isLastPage/nextPageStart", async () => {
+  it("paginates comments via /activities (start/limit/isLastPage/nextPageStart) and includes nested replies, ignoring non-COMMENT activities", async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       const urlObj = new URL(url);
+      // Bitbucket Server's GET /comments requires a `path` query param, so IRA
+      // uses /activities instead — which returns all PR activities, not just comments.
+      expect(urlObj.pathname.endsWith("/activities")).toBe(true);
       const start = Number(urlObj.searchParams.get("start") ?? "0");
-      const page1 = { values: [{ text: "a" }, { text: "b" }], isLastPage: false, nextPageStart: 100 };
-      const page2 = { values: [{ text: "c" }], isLastPage: true };
+      const page1 = {
+        values: [
+          { action: "COMMENTED", comment: { text: "a" } },
+          { action: "COMMENTED", comment: { text: "b", comments: [{ text: "reply-to-b" }] } },
+          { action: "APPROVED" }, // non-comment activity — must be ignored
+        ],
+        isLastPage: false,
+        nextPageStart: 100,
+      };
+      const page2 = {
+        values: [{ action: "COMMENTED", comment: { text: "c" } }],
+        isLastPage: true,
+      };
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(start === 0 ? page1 : page2),
@@ -110,7 +124,7 @@ describe("BitbucketServerClient", () => {
     globalThis.fetch = fetchMock;
 
     const out = await makeClient().getIssueComments("3");
-    expect(out).toEqual(["a", "b", "c"]);
+    expect(out).toEqual(["a", "b", "reply-to-b", "c"]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

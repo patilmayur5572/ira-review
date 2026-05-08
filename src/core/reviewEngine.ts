@@ -378,15 +378,27 @@ export class ReviewEngine {
               warnings.push(acGeneration.parseWarning);
             }
 
-            if (acGeneration.criteria.length > 0 && !this.config.dryRun) {
+            // Post the suggested ACs as a comment on the JIRA ticket unless the
+            // operator opted out (--no-post-acs-to-jira / IRA_POST_ACS_TO_JIRA=false).
+            // Suggestions still appear in the PR summary either way.
+            const postingDisabled = this.config.postAcsToJira === false;
+            if (acGeneration.criteria.length > 0 && !this.config.dryRun && !postingDisabled) {
               try {
                 const commentBody = formatACsForJiraComment(acGeneration, pullRequestId);
                 await jiraClient.addComment(this.config.jiraTicket, commentBody);
                 console.log(`  Posted ${acGeneration.totalCriteria} suggested ACs to ${this.config.jiraTicket}`);
+                acGeneration.postedToJira = true;
               } catch (error) {
                 const msg = error instanceof Error ? error.message : "Unknown error";
                 warnings.push(`Failed to post AC suggestions to JIRA: ${msg}`);
+                acGeneration.postedToJira = false;
               }
+            } else if (postingDisabled && acGeneration.criteria.length > 0) {
+              console.log(`  Skipped posting ${acGeneration.totalCriteria} suggested ACs to ${this.config.jiraTicket} (--no-post-acs-to-jira). See PR summary.`);
+              acGeneration.postedToJira = false;
+            } else {
+              // dry-run, no criteria generated, or anything else: not posted
+              acGeneration.postedToJira = false;
             }
           }
         }

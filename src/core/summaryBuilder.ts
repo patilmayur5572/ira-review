@@ -33,6 +33,53 @@ export function buildSummary(result: ReviewResult): string {
     }
   }
 
+  // All-clear celebration — only when:
+  //   • zero findings made it through filtering, AND
+  //   • no JIRA AC gap exists (incomplete coverage or failed AC validation
+  //     should NEVER read "safe to approve"; the requirements section below
+  //     will surface the gap visibly instead).
+  // Goal: give reviewers a confident, specific signal that automated review
+  // passed, while making it obvious that human approval is still required.
+  const acGapExists =
+    (result.requirementCompletion && result.requirementCompletion.completionPercentage < 100) ||
+    (result.acceptanceValidation && !result.acceptanceValidation.overallPass);
+  if (result.comments.length === 0 && !acGapExists) {
+    const fw = result.framework ?? "your stack";
+    // AC line — mutually exclusive cases:
+    //   • requirementCompletion: ticket HAD ACs and they were validated for coverage %
+    //   • acceptanceValidation:  ticket HAD ACs (legacy path, no coverage %)
+    //   • acGeneration:          ticket had NO ACs, IRA generated suggestions and posted to JIRA
+    //   • all null:              no JIRA ticket configured, or JIRA call soft-failed → omit the line
+    const acLine = result.requirementCompletion
+      ? `Acceptance criteria for **${result.requirementCompletion.jiraKey}**: **${result.requirementCompletion.completionPercentage}% covered** (${result.requirementCompletion.metCriteria}/${result.requirementCompletion.totalCriteria}).`
+      : result.acceptanceValidation
+        ? `Acceptance criteria for **${result.acceptanceValidation.jiraKey}**: ${result.acceptanceValidation.overallPass ? "**all met** ✅" : "**partially met** — see the JIRA section above"}.`
+        : result.acGeneration && result.acGeneration.criteria.length > 0
+          ? (result.acGeneration.postedToJira
+              ? `📝 No acceptance criteria found on **${result.acGeneration.jiraKey}** — IRA generated **${result.acGeneration.totalCriteria} suggested AC${result.acGeneration.totalCriteria === 1 ? "" : "s"}** and posted them as a comment on the JIRA ticket for the Product Owner / requirement author to review and refine.`
+              : `📝 No acceptance criteria found on **${result.acGeneration.jiraKey}** — IRA generated **${result.acGeneration.totalCriteria} suggested AC${result.acGeneration.totalCriteria === 1 ? "" : "s"}** (see the Suggested Acceptance Criteria section below).`)
+          : null;
+
+    lines.push("## ✅ All Clear — No Issues Found");
+    lines.push("");
+    lines.push(`> 🎉 **Nice work on PR #${result.pullRequestId}!**`);
+    lines.push(`>`);
+    lines.push(`> IRA scanned every changed file across **${fw}** and didn't surface a single concern.`);
+    if (acLine) {
+      lines.push(`>`);
+      lines.push(`> ${acLine}`);
+    }
+    if (result.risk) {
+      lines.push(`>`);
+      lines.push(`> Risk score: **${result.risk.score}/${result.risk.maxScore}** (${result.risk.level}).`);
+    }
+    lines.push(`>`);
+    lines.push(`> ✅ **Safe to approve from an automated-review standpoint.**`);
+    lines.push(`>`);
+    lines.push(`> 👥 **Human reviewer approval is still required before merge.** IRA augments your code review process — it doesn't replace it. Please ensure your team's review and approval requirements have been met before merging.`);
+    lines.push("");
+  }
+
   // Overview
   lines.push("## Overview");
   lines.push("");

@@ -140,6 +140,7 @@ program
   .option("--jira-ticket <key>", "JIRA ticket key (e.g. PROJ-123)")
   .option("--jira-ac-field <field>", "Custom field ID for acceptance criteria")
   .option("--jira-ac-source <source>", "Where to look for AC: customField, description, or both (default: customField)")
+  .option("--no-post-acs-to-jira", "Don't post AI-generated acceptance criteria back to the JIRA ticket when none exist; keep them in the PR summary only (or IRA_POST_ACS_TO_JIRA=false)")
   .option("--slack-webhook <url>", "Slack webhook URL for notifications")
   .option("--teams-webhook <url>", "Teams webhook URL for notifications")
   .option("--notify-min-risk <level>", "Only notify when risk is at or above this level: low, medium, high, critical")
@@ -193,6 +194,11 @@ program
         ...(opts.jiraTicket && { jiraTicket: opts.jiraTicket.toUpperCase() }),
         ...(opts.jiraAcField && { jiraAcField: opts.jiraAcField }),
         ...(opts.jiraAcSource && { jiraAcSource: opts.jiraAcSource }),
+        // commander's --no-X pattern → opts.postAcsToJira is `true` by default,
+        // `false` only when the user passed `--no-post-acs-to-jira`. Only push
+        // through the explicit-disable case; otherwise leave undefined so env
+        // var (or the engine's built-in default of "enabled") wins.
+        ...(opts.postAcsToJira === false && { postAcsToJira: false }),
         ...(opts.slackWebhook && { slackWebhook: opts.slackWebhook }),
         ...(opts.teamsWebhook && { teamsWebhook: opts.teamsWebhook }),
         ...(opts.notifyMinRisk && { notifyMinRisk: opts.notifyMinRisk }),

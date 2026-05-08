@@ -83,4 +83,11 @@ export interface ACGenerationResult {
   sources: string[];
   reviewHints: string[];
   parseWarning?: string;
+  /**
+   * Whether the engine actually posted these suggested ACs as a comment on the
+   * JIRA ticket. False when --no-post-acs-to-jira / IRA_POST_ACS_TO_JIRA=false
+   * was set, when --dry-run was set, or when the JIRA call soft-failed.
+   * Drives the wording of the All Clear summary block so it doesn't lie.
+   */
+  postedToJira?: boolean;
 }

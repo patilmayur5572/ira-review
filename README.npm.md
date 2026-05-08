@@ -42,6 +42,7 @@ Each issue is posted as an inline comment on the exact PR line with explanation,
 - Two-pass critical review (`--ai-model-critical`) — bulk pass uses your everyday model; only `CRITICAL`/`BLOCKER` findings are re-run against a stronger model, keeping premium-request cost low while preserving deep analysis on what matters
 - JIRA acceptance criteria validation with per-criterion pass/fail and edge case detection
 - JIRA AC auto-detection — finds AC from custom field or description automatically
+- "All Clear" PR summary block — celebratory ✅ banner when zero issues are found and JIRA AC coverage is 100%, with a clear "human reviewer approval is still required before merge" reminder. Suppressed automatically if any AC gap exists, so the summary never claims "safe to approve" while requirements are unmet.
 - Custom team review rules via `.ira-rules.json` (see below)
 - Test case generation from JIRA tickets (Jest, Vitest, Playwright, etc.)
 - Comment deduplication across re-runs
@@ -151,6 +152,7 @@ All optional. IRA works with just an SCM token and an AI key.
 | OpenAI-compatible gateway | `--ai-base-url https://your-llm-proxy/v1` (GitHub Models, LiteLLM, internal proxy…) |
 | Rules from URL (no checkout) | `--rules-url https://bitbucket.example.com/.../.ira-rules.json` |
 | Compact / detailed comments | `--comment-style compact` (default) or `--comment-style detailed` |
+| Don't post AI-generated ACs to JIRA | `--no-post-acs-to-jira` (env: `IRA_POST_ACS_TO_JIRA=false`) — suggestions still render in the PR summary; only the JIRA write is skipped |
 
 ---
 

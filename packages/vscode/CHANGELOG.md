@@ -2,6 +2,13 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.1.2] — 2026-05-08
+
+### Underlying CLI
+
+- Bundles [`ira-review`](https://www.npmjs.com/package/ira-review) **3.1.2**, which adds the **"All Clear" PR summary block** (celebratory ✅ banner when zero issues found and JIRA acceptance criteria are 100% covered, with an explicit "human reviewer approval is still required" reminder) and the new **`--no-post-acs-to-jira`** flag (env: `IRA_POST_ACS_TO_JIRA=false`) for keeping AI-generated AC suggestions in the PR summary only without posting back to the JIRA ticket. Also fixes a Bitbucket Server `400` on `getIssueComments` (switched from `/comments` to `/activities`) so dedup works on PR re-runs. See the [ira-review CHANGELOG](https://github.com/patilmayur5572/ira-review/blob/main/CHANGELOG.md#312--2026-05-08) for full details.
+- Both fixes are CLI-side and surface automatically in the extension's PR-review flow; no setting changes required.
+
 ## [3.1.1] — 2026-05-08
 
 ### Fixed

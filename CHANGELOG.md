@@ -3,6 +3,17 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.2] — 2026-05-08
+
+### Added
+
+- **"All Clear" PR summary block** — When IRA completes a review and finds zero issues at or above the configured severity threshold, the PR summary now leads with a celebratory ✅ block: `Nice work on PR #N`, a brief description of what was reviewed (file count or framework), AC coverage if validated, the risk score, an explicit `Safe to approve from an automated-review standpoint` confirmation, AND a clear reminder that **human reviewer approval is still required before merge**. Previously a clean review just showed `Total issues: 0` in the overview table with no positive signal — reviewers couldn't tell at a glance whether IRA had actually run successfully or had silently skipped something. New block lives in `src/core/summaryBuilder.ts` and is purely additive (no config flag, no opt-in needed; only renders when `comments.length === 0`).
+- **`--no-post-acs-to-jira` flag (env: `IRA_POST_ACS_TO_JIRA=false`)** — Suppresses the "post AI-generated acceptance criteria as a comment on the JIRA ticket" step that runs when a ticket has no ACs. Suggestions still appear in the PR summary's `## 📝 Suggested Acceptance Criteria` section so reviewers see them; nothing is written back to JIRA. Useful for CI environments that don't want IRA touching JIRA tickets at all (e.g. pipelines running on every webhook). Defaults to `true` (post enabled) for backwards compatibility — no-op for existing setups. The All Clear block adapts its wording so it doesn't claim a JIRA post happened when it didn't.
+
+### Fixed
+
+- **Bitbucket Server comment dedup 400 error** — `BitbucketServerClient.getIssueComments()` was calling `GET /pull-requests/{id}/comments?start=&limit=`, which Bitbucket Server rejects with `400: The path query parameter is required when retrieving comments` because that endpoint is the per-file inline-comment listing API. Switched to `GET /pull-requests/{id}/activities`, filtering for `action === "COMMENTED"` and recursively collecting nested replies. This is the correct way to enumerate every comment on a PR for de-duplication purposes against previous IRA runs. Without this, IRA would post the review successfully on the first run but crash on every subsequent run when it tried to check for prior comments.
+
 ## [3.1.1] — 2026-05-08
 
 ### Fixed

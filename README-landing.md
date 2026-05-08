@@ -40,6 +40,7 @@ npx ira-review review --pr 42 --dry-run
 - AI-powered code review with inline PR comments
 - Risk scoring (0-100) with auto-labeling on GitHub
 - JIRA acceptance criteria validation with per-criterion pass/fail
+- "All Clear" PR summary block — celebratory ✅ banner when zero issues are found and JIRA AC coverage is 100%, with an explicit "human reviewer approval is still required before merge" reminder. Suppressed automatically when an AC gap exists.
 - Test Generation from JIRA — generate test cases from JIRA acceptance criteria in 8 frameworks
 - SonarQube issue enrichment with AI explanations
 - Slack and Teams notifications with risk threshold filtering
@@ -119,6 +120,7 @@ jobs:
 | Save on AI costs | `--ai-model gpt-4o-mini --ai-model-critical gpt-4o` |
 | Generate tests only | `npx ira-review generate-tests --jira-ticket AUTH-234 --test-framework jest --ai-api-key sk-xxx` |
 | Save tests to file | `--output tests/auth.test.ts` |
+| Don't post AI-generated ACs to JIRA | `--no-post-acs-to-jira` (env: `IRA_POST_ACS_TO_JIRA=false`) — suggestions still render in the PR summary; only the JIRA write is skipped |
 
 ## AI Providers
 

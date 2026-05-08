@@ -68,6 +68,14 @@ export interface IraConfig {
   generateTests?: boolean;
   testFramework?: TestFramework;
   jiraAcSource?: "customField" | "description" | "both";
+  /**
+   * When IRA reviews a JIRA ticket that has no acceptance criteria, it generates
+   * suggested ACs from the PR diff and (by default) posts them as a comment on
+   * the JIRA ticket. Set to `false` to keep the suggestions in the PR summary
+   * only, without writing back to JIRA. Defaults to `true` for backwards
+   * compatibility. CLI: `--no-post-acs-to-jira`. Env: `IRA_POST_ACS_TO_JIRA=false`.
+   */
+  postAcsToJira?: boolean;
   /** Comment formatter style — defaults to "compact". */
   commentStyle?: CommentStyle;
   /** Optional URL to fetch .ira-rules.json from (HTTP) — useful when no local checkout exists. */

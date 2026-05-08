@@ -183,10 +183,31 @@ export class BitbucketServerClient implements SCMProvider {
   }
 
   async getIssueComments(pullRequestId: string): Promise<string[]> {
+    // Bitbucket Server's GET /pull-requests/{id}/comments REQUIRES a `path`
+    // query parameter (it's the per-file inline-comments listing endpoint).
+    // To get every comment on a PR for dedup, use /activities instead, which
+    // returns all PR activities (comments, approvals, merges, etc.) and does
+    // not require path. Filter for action === 'COMMENTED', then collect both
+    // top-level comment text AND any nested replies.
+    type CommentNode = { text?: string; comments?: CommentNode[] };
+    type Activity = {
+      action?: string;
+      commentAction?: string;
+      comment?: CommentNode;
+    };
+
+    const collect = (node: CommentNode | undefined, sink: string[]): void => {
+      if (!node) return;
+      if (typeof node.text === "string" && node.text.length > 0) sink.push(node.text);
+      if (Array.isArray(node.comments)) {
+        for (const child of node.comments) collect(child, sink);
+      }
+    };
+
     const bodies: string[] = [];
     let start = 0;
     while (true) {
-      const url = this.prUrl(pullRequestId, `/comments?start=${start}&limit=100`);
+      const url = this.prUrl(pullRequestId, `/activities?start=${start}&limit=100`);
       const data = await withRetry(async () => {
         const response = await fetchWithTimeout(url, { headers: this.headers });
         if (!response.ok) {
@@ -196,10 +217,12 @@ export class BitbucketServerClient implements SCMProvider {
             response.status,
           );
         }
-        return (await response.json()) as BBServerPaginatedResponse<{ text: string }>;
+        return (await response.json()) as BBServerPaginatedResponse<Activity>;
       });
 
-      for (const c of data.values) bodies.push(c.text);
+      for (const activity of data.values) {
+        if (activity.action === "COMMENTED") collect(activity.comment, bodies);
+      }
       if (data.isLastPage) break;
       start = data.nextPageStart ?? start + 100;
     }

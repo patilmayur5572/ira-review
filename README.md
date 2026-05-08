@@ -135,6 +135,12 @@ IRA fetches the linked JIRA ticket, extracts the acceptance criteria, and uses t
 
 This is the feature that catches "does this actually match the ticket?" before a human has to ask.
 
+When a JIRA ticket has **no acceptance criteria at all**, IRA generates suggested ACs from the diff and (by default) posts them as a comment on the JIRA ticket for the Product Owner to review and refine. If your CI environment cannot or should not write back to JIRA — for example, the JIRA service account is read-only, or org policy forbids automated JIRA writes — pass `--no-post-acs-to-jira` (or set `IRA_POST_ACS_TO_JIRA=false`). The suggestions still render in the PR summary under **📝 Suggested Acceptance Criteria**, so reviewers see them either way; only the JIRA write is suppressed.
+
+### "All Clear" PR Summary
+
+When IRA finishes a review with **zero issues** found and **JIRA acceptance criteria are 100% covered** (or the ticket needs no ACs), the PR summary leads with a celebratory ✅ banner: a confident, specific signal that automated review passed, alongside an explicit reminder that **human reviewer approval is still required before merge**. The banner is suppressed when an AC gap exists so the summary never reads "safe to approve" while a requirements gap is still visible — IRA augments your code review process, it doesn't replace it.
+
 ### Inline AI Comments
 
 Each issue is posted as an inline comment on the exact line in the PR, containing:
@@ -436,6 +442,15 @@ Tips for Jenkins / corporate networks:
 - **Comment style** — use `--comment-style compact` (default) for terse,
   severity-first inline comments. `--comment-style detailed` keeps the legacy
   Explanation / Impact / Suggested Fix block.
+- **Don't write to JIRA** — pass `--no-post-acs-to-jira` (or set
+  `IRA_POST_ACS_TO_JIRA=false`) when the JIRA token is read-only or org policy
+  forbids automated comments on tickets. AI-generated AC suggestions still
+  appear in the PR summary; only the JIRA write is suppressed.
+- **PowerShell stability on Windows agents** — wrap the `ira-review` invocation
+  with `2>&1 | ForEach-Object { Write-Host $_ }` and check `$LASTEXITCODE`
+  explicitly. PowerShell's default `$ErrorActionPreference = 'Stop'` treats any
+  native-command stderr as a terminating `NativeCommandError`; merging stderr
+  into stdout prevents harmless deprecation notices from aborting the pipeline.
 
 ---
 

@@ -72,6 +72,17 @@ export function resolveConfigFromEnv(
   const jiraAcSource = overrides.jiraAcSource ?? optionalEnv("IRA_JIRA_AC_SOURCE");
   const jiraTicket = overrides.jiraTicket ?? optionalEnv("IRA_JIRA_TICKET");
 
+  // postAcsToJira: explicit `false` from CLI (`--no-post-acs-to-jira`) wins,
+  // then env (IRA_POST_ACS_TO_JIRA=false|0|no|off), otherwise undefined and
+  // the engine treats undefined as "post enabled" (the historical default).
+  const postAcsToJiraEnv = optionalEnv("IRA_POST_ACS_TO_JIRA");
+  const postAcsToJira: boolean | undefined =
+    overrides.postAcsToJira === false
+      ? false
+      : postAcsToJiraEnv && /^(false|0|no|off)$/i.test(postAcsToJiraEnv)
+        ? false
+        : undefined;
+
   const commentStyleRaw = overrides.commentStyle ?? optionalEnv("IRA_COMMENT_STYLE");
   if (commentStyleRaw && commentStyleRaw !== "compact" && commentStyleRaw !== "detailed") {
     throw new Error(`Invalid comment-style: "${commentStyleRaw}". Must be "compact" or "detailed".`);
@@ -107,6 +118,7 @@ export function resolveConfigFromEnv(
     ...(overrides.generateTests && { generateTests: overrides.generateTests }),
     ...(overrides.testFramework && { testFramework: overrides.testFramework as IraConfig["testFramework"] }),
     ...(jiraAcSource && { jiraAcSource: jiraAcSource as IraConfig["jiraAcSource"] }),
+    ...(postAcsToJira === false && { postAcsToJira: false }),
     ...(commentStyle && { commentStyle }),
     ...(rulesUrl && { rulesUrl }),
   };
@@ -290,6 +302,7 @@ export interface FlatConfig {
   generateTests?: boolean;
   testFramework?: string;
   jiraAcSource?: string;
+  postAcsToJira?: boolean;
 }
 
 function env(key: string): string {
