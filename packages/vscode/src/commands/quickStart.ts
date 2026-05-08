@@ -224,10 +224,18 @@ async function ensureScmAuth(detected: DetectedScm): Promise<StepOutcome> {
       return 'already';
     }
 
-    // Prompt for HTTP Access Token (NOT password)
-    const tokenPageUrl = `${bbUrl}/plugins/servlet/access-tokens/users/me/manage`;
+    // Prompt for HTTP Access Token (NOT password).
+    // Use the top-level /plugins/servlet/access-tokens/ entry point — the
+    // per-user /users/me/manage URL 404s for some Bitbucket Server installs
+    // where "me" isn't resolved before the user has ever opened the page.
+    const tokenPageUrl = `${bbUrl}/plugins/servlet/access-tokens/`;
     const action = await vscode.window.showInformationMessage(
-      'IRA: You need a Bitbucket HTTP Access Token (not your password).\n\n📍 Bitbucket → User icon → Manage account → HTTP access tokens → Create',
+      'IRA: You need a Bitbucket HTTP Access Token (not your password).\n\n' +
+        '📍 Bitbucket → User icon → Manage account → HTTP access tokens → Create\n\n' +
+        '🔒 Permissions — grant ONLY:\n' +
+        '   • Projects: Read\n' +
+        '   • Repositories: Read\n\n' +
+        "IRA only needs to read PRs and post review comments — don't grant Write or Admin.",
       { modal: true },
       '🔗 Open Token Page',
       'I have one',

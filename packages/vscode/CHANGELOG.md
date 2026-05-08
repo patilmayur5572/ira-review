@@ -2,6 +2,20 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.1.1] — 2026-05-08
+
+### Fixed
+
+- **Bitbucket Server token page 404 on first-time setup** — the Quick Start "Open Token Page" link now opens `${bitbucketUrl}/plugins/servlet/access-tokens/`, the top-level entry point. The previous per-user `/access-tokens/users/me/manage` URL 404'd on some Bitbucket Server installs the first time a user opened it, before "me" was resolved.
+
+### Changed
+
+- **Bitbucket Server token-creation guidance** — the Quick Start modal now explicitly tells users to grant **only** `Projects: Read` + `Repositories: Read` when creating their HTTP Access Token, with a note that IRA never needs Write or Admin scopes. Reduces accidental over-permissioning for first-time users.
+
+### Underlying CLI
+
+- Bundles [`ira-review`](https://www.npmjs.com/package/ira-review) **3.1.1**, which fixes a Windows / PowerShell CI failure where `git` stderr from `execSync` calls in `gitRoot.ts` and `reviewEngine.ts` was treated as a `NativeCommandError` and aborted the surrounding pipeline script. Pure CI-stability fix; no impact on Linux/macOS bash runners or VS Code itself.
+
 ## [3.1.0] — 2026-05-07
 
 ### Changed

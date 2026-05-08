@@ -351,7 +351,11 @@ export class ReviewEngine {
             let commitMessages: string[] = [];
             try {
               const { execSync } = await import("child_process");
-              const gitLog = execSync("git log --oneline -20 --no-decorate", { cwd: repoPath, encoding: "utf-8" });
+              const gitLog = execSync("git log --oneline -20 --no-decorate", {
+                cwd: repoPath,
+                encoding: "utf-8",
+                stdio: ["pipe", "pipe", "pipe"],
+              });
               commitMessages = gitLog.trim().split("\n").filter(Boolean);
             } catch {
               // Soft fail — commit messages are optional context

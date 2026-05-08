@@ -3,6 +3,12 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.1] — 2026-05-08
+
+### Fixed
+
+- **PowerShell compatibility on Windows CI agents** — `resolveGitRoot()` (`src/utils/gitRoot.ts`) and the AC-generation `git log` call (`src/core/reviewEngine.ts`) now pass `stdio: ["pipe", "pipe", "pipe"]` to `execSync`. Previously, when these `git` invocations ran outside a checkout (e.g. against an empty `ai-dry-run` workspace), git would print `fatal: not a git repository` to inherited stderr; under PowerShell this is interpreted as a `NativeCommandError` and aborts the surrounding script even though IRA itself catches the exception and recovers. Piping stderr keeps git's diagnostic out of the parent shell. Other `git` execSync sites (`src/utils/preflight.ts`, `src/utils/env.ts`, `src/cli.ts`) already piped stderr and were unaffected.
+
 ## [3.1.0] — 2026-05-07
 
 ### Added

@@ -13,7 +13,10 @@ describe("resolveGitRoot", () => {
     mockedExecSync.mockReturnValue("/Users/dev/project\n");
     const result = resolveGitRoot();
     expect(result).toBe("/Users/dev/project");
-    expect(mockedExecSync).toHaveBeenCalledWith("git rev-parse --show-toplevel", { encoding: "utf-8" });
+    expect(mockedExecSync).toHaveBeenCalledWith("git rev-parse --show-toplevel", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
   });
 
   it("falls back to process.cwd() on failure", () => {
