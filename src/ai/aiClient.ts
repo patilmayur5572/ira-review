@@ -404,8 +404,14 @@ export class CopilotCliProvider implements AIProvider {
       // HTTPS_PROXY, NODE_EXTRA_CA_CERTS, etc. being already set by the surrounding shell.
       const env = { ...process.env };
 
+      // Pipe the prompt via stdin instead of `-p <prompt>` so we don't hit
+      // Windows' 8191-character cmd.exe command-line limit when the PR diff
+      // is large (observed: every file in a 5-file React PR failing with
+      // "The command line is too long."). Copilot CLI 1.0.43+ reads from
+      // stdin when -p is empty (see github/copilot-cli#1046). Args stay tiny
+      // and constant; the prompt body — however large — flows through stdin.
       const args = [
-        "-p", prompt,
+        "-p", "",              // empty -p triggers stdin read on copilot CLI 1.x
         "-s",                  // silent — only the response, no stats lines
         "--allow-all-tools",   // required for non-interactive mode (copilot v0.0.367+)
         "--no-color",          // strip ANSI just in case the silent flag misses something
@@ -415,10 +421,14 @@ export class CopilotCliProvider implements AIProvider {
       // shell:true on Windows so .cmd shims (npm-installed copilot) execute correctly.
       const useShell = process.platform === "win32";
       const child = spawn("copilot", args, {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
         env,
         shell: useShell,
       });
+
+      // Send the prompt via stdin and close it so copilot knows the input is complete.
+      child.stdin.write(prompt);
+      child.stdin.end();
 
       let stdout = "";
       let stderr = "";

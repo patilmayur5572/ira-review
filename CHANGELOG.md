@@ -3,6 +3,25 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.5] — 2026-05-08
+
+### Fixed
+
+- **Copilot CLI provider — Windows "command line is too long" failures.**
+  The `CopilotCliProvider` previously passed the prompt as a `-p <prompt>`
+  argument. On Windows, `spawn(..., { shell: true })` routes the call
+  through `cmd.exe`, which truncates command lines at **8,191 characters**
+  and rejects them with `Copilot CLI failed: The command line is too long.`
+  This caused **every per-file review to silently fail** on Windows CI agents
+  for any non-trivial PR (observed: a 5-file React PR where every file's
+  diff exceeded the limit, producing a misleading "All Clear" summary
+  even though zero files were actually reviewed). The provider now pipes
+  the prompt body through the child process's **stdin** (with `-p ""` so
+  Copilot CLI 1.x reads from stdin per github/copilot-cli#1046). Args
+  stay tiny and constant, so the prompt size is bounded only by the AI
+  model's context window (~700 KB / 200K tokens for claude-sonnet-4.5)
+  instead of the OS shell. New regression test exercises a ~50 KB prompt.
+
 ## [3.1.4] — 2026-05-08
 
 ### Fixed
