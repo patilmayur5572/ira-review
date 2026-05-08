@@ -3,6 +3,21 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.4] — 2026-05-08
+
+### Fixed
+
+- **Bitbucket Server comment dedup 400 — second code path.** The 3.1.2 fix
+  switched `BitbucketServerClient.getIssueComments()` from
+  `/pull-requests/{id}/comments` (which 400s without a `path` query param —
+  it's the per-file inline-comments endpoint) to `/activities`, but missed
+  a second Bitbucket Server code path inside `CommentTracker.getBitbucketServerIraComments()`.
+  That path was still hitting `/comments` and tripping the same 400, which
+  blocked review posting on every PR after the first one. It now also reads
+  from `/activities`, filters for `action === "COMMENTED"`, and recursively
+  walks nested replies (where IRA's reply-thread dedup metadata can also
+  live). Test coverage in `commentTracker.test.ts` updated accordingly.
+
 ## [3.1.3] — 2026-05-08
 
 ### Fixed

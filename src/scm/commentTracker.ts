@@ -178,20 +178,37 @@ export class CommentTracker {
   }
 
   private async getBitbucketServerIraComments(pullRequestId: string): Promise<Set<string>> {
+    // Bitbucket Server's GET /pull-requests/{id}/comments REQUIRES a `path`
+    // query parameter (it's the per-file inline-comments listing endpoint)
+    // and returns 400 "The path query parameter is required when retrieving
+    // comments" otherwise. To enumerate every comment on a PR for dedup, use
+    // /activities — which returns all PR activities (comments, approvals,
+    // merges, etc.). Filter for action === 'COMMENTED', then recursively
+    // collect both top-level comment text AND any nested replies (which is
+    // where IRA's reply-to-itself dedup metadata can also live).
+    type CommentNode = { text?: string; comments?: CommentNode[] };
+    type Activity = { action?: string; comment?: CommentNode };
+
+    const visit = (node: CommentNode | undefined, sink: Set<string>): void => {
+      if (!node) return;
+      if (typeof node.text === "string" && isIraComment(node.text)) {
+        const meta = node.text.match(IRA_META_RE);
+        if (meta) sink.add(`${meta[1]}:${meta[2]}:${meta[3]}`);
+      }
+      if (Array.isArray(node.comments)) {
+        for (const child of node.comments) visit(child, sink);
+      }
+    };
+
     const keys = new Set<string>();
     let start = 0;
 
     while (true) {
-      const url = `${this.baseUrl}/rest/api/1.0/projects/${this.project}/repos/${this.bbServerRepoSlug}/pull-requests/${pullRequestId}/comments?start=${start}&limit=100`;
-      const data = await this.fetchBitbucketServerPage(url);
+      const url = `${this.baseUrl}/rest/api/1.0/projects/${this.project}/repos/${this.bbServerRepoSlug}/pull-requests/${pullRequestId}/activities?start=${start}&limit=100`;
+      const data = await this.fetchBitbucketServerPage<Activity>(url);
 
-      for (const comment of data.values) {
-        if (!isIraComment(comment.text)) continue;
-
-        const meta = comment.text.match(IRA_META_RE);
-        if (meta) {
-          keys.add(`${meta[1]}:${meta[2]}:${meta[3]}`);
-        }
+      for (const activity of data.values) {
+        if (activity.action === "COMMENTED") visit(activity.comment, keys);
       }
 
       if (data.isLastPage) break;
@@ -201,7 +218,7 @@ export class CommentTracker {
     return keys;
   }
 
-  private async fetchBitbucketServerPage(url: string): Promise<{ values: Array<{ text: string }>; isLastPage: boolean; nextPageStart?: number }> {
+  private async fetchBitbucketServerPage<T>(url: string): Promise<{ values: T[]; isLastPage: boolean; nextPageStart?: number }> {
     return withRetry(async () => {
       const response = await fetchWithTimeout(url, { headers: this.headers });
 
@@ -213,7 +230,7 @@ export class CommentTracker {
         );
       }
 
-      return (await response.json()) as { values: Array<{ text: string }>; isLastPage: boolean; nextPageStart?: number };
+      return (await response.json()) as { values: T[]; isLastPage: boolean; nextPageStart?: number };
     });
   }
 

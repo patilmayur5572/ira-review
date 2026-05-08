@@ -172,21 +172,26 @@ describe("CommentTracker - Bitbucket Server", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("deduplicates IRA comments from Bitbucket Server REST API", async () => {
+  it("deduplicates IRA comments from Bitbucket Server /activities (incl. nested replies, ignoring non-COMMENT activities)", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
         Promise.resolve({
           values: [
             {
-              text: "<!-- ira:file=src/app.ts;line=10;rule=no-any -->\n🔍 **IRA Review** - `no-any` (MAJOR)\n> Avoid any",
+              action: "COMMENTED",
+              comment: {
+                text: "<!-- ira:file=src/app.ts;line=10;rule=no-any -->\n🔍 **IRA Review** - `no-any` (MAJOR)\n> Avoid any",
+                comments: [
+                  // nested reply that itself carries an IRA marker — must be picked up
+                  { text: "<!-- ira:file=src/utils.ts;line=5;rule=no-console -->\n🔍 **IRA Review** - `no-console` (MINOR)\n> Remove console.log" },
+                ],
+              },
             },
-            {
-              text: "Regular comment, not from IRA",
-            },
-            {
-              text: "<!-- ira:file=src/utils.ts;line=5;rule=no-console -->\n🔍 **IRA Review** - `no-console` (MINOR)\n> Remove console.log",
-            },
+            { action: "COMMENTED", comment: { text: "Regular comment, not from IRA" } },
+            // non-COMMENT activities (approvals, merges, etc.) must be ignored
+            { action: "APPROVED" },
+            { action: "MERGED" },
           ],
           isLastPage: true,
         }),
@@ -218,7 +223,7 @@ describe("CommentTracker - Bitbucket Server", () => {
     expect(existing.size).toBe(0);
   });
 
-  it("paginates through Bitbucket Server comments", async () => {
+  it("paginates through Bitbucket Server activities", async () => {
     let callCount = 0;
     globalThis.fetch = vi.fn().mockImplementation(() => {
       callCount++;
@@ -228,7 +233,7 @@ describe("CommentTracker - Bitbucket Server", () => {
           json: () =>
             Promise.resolve({
               values: [
-                { text: "<!-- ira:file=a.ts;line=1;rule=r1 -->\n🔍 **IRA Review** - `r1` (MAJOR)" },
+                { action: "COMMENTED", comment: { text: "<!-- ira:file=a.ts;line=1;rule=r1 -->\n🔍 **IRA Review** - `r1` (MAJOR)" } },
               ],
               isLastPage: false,
               nextPageStart: 100,
@@ -240,7 +245,7 @@ describe("CommentTracker - Bitbucket Server", () => {
         json: () =>
           Promise.resolve({
             values: [
-              { text: "<!-- ira:file=b.ts;line=2;rule=r2 -->\n🔍 **IRA Review** - `r2` (MINOR)" },
+              { action: "COMMENTED", comment: { text: "<!-- ira:file=b.ts;line=2;rule=r2 -->\n🔍 **IRA Review** - `r2` (MINOR)" } },
             ],
             isLastPage: true,
           }),
@@ -265,8 +270,8 @@ describe("CommentTracker - Bitbucket Server", () => {
       json: () =>
         Promise.resolve({
           values: [
-            { text: "Looks good to me! 👍" },
-            { text: "Please fix the typo on line 5" },
+            { action: "COMMENTED", comment: { text: "Looks good to me! 👍" } },
+            { action: "COMMENTED", comment: { text: "Please fix the typo on line 5" } },
           ],
           isLastPage: true,
         }),
@@ -281,7 +286,7 @@ describe("CommentTracker - Bitbucket Server", () => {
     expect(existing.size).toBe(0);
   });
 
-  it("uses correct REST API URL for Bitbucket Server", async () => {
+  it("uses /activities (not /comments) on Bitbucket Server — /comments requires a `path` query param and 400s without it", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ values: [], isLastPage: true }),
@@ -294,7 +299,7 @@ describe("CommentTracker - Bitbucket Server", () => {
 
     await tracker.getExistingIraComments("99");
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "https://bitbucket.corp.com/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/99/comments?start=0&limit=100",
+      "https://bitbucket.corp.com/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/99/activities?start=0&limit=100",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer tok",
