@@ -382,9 +382,9 @@ describe("buildStandalonePrompt", () => {
       );
       // The carve-out is what stops a vague rule like `no-any-type` from
       // re-opening the null-suggestion floodgate Claude exhibited in v3.0.x.
-      expect(prompt).toContain("checklist Section 7 (Defensive Coding) is NOT overridden");
+      expect(prompt).toContain("checklist Section 7 (Defensive Coding) is NOT overridden by vague rules");
       expect(prompt).toContain("type safety");
-      expect(prompt).toContain("specific `bad:` example that matches the exact code pattern");
+      expect(prompt).toContain("specific `bad:` example matching the diff");
     });
 
     it("does NOT emit the precedence paragraph when team rules are absent (no behaviour change for non-rules consumers)", () => {
@@ -394,7 +394,7 @@ describe("buildStandalonePrompt", () => {
         null,
       );
       expect(prompt).not.toContain("PRECEDENCE — Team Rules vs general checklist guidance");
-      expect(prompt).not.toContain("checklist Section 7 (Defensive Coding) is NOT overridden");
+      expect(prompt).not.toContain("checklist Section 7 (Defensive Coding) is NOT overridden by vague rules");
     });
 
     it("still includes Section 7's null-handling guards in the checklist (precedence rule must not delete them)", () => {

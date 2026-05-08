@@ -3,6 +3,31 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.8] — 2026-05-09
+
+### Fixed
+
+- **Team rule precedence required a literal `bad:` snippet match — too strict.**
+  In 3.1.7, a clear team rule like
+  `{ "id": "no-console-log", "description": "Do not commit console.log
+  statements to production code", "severity": "MINOR" }` still failed to
+  flag a `console.log('healthCheck called');` insertion, because the
+  precedence paragraph only authorised override when the rule had a
+  `bad:` example whose pattern matched the diff. AI providers can
+  semantically interpret a clear `description`, and forcing teams to
+  enumerate every `bad:` snippet defeated the purpose of the rules
+  file.
+  - **Fix**: the `TEAM_RULES_PRECEDENCE` paragraph in
+    `src/ai/promptBuilder.ts` now allows the AI to override checklist
+    silencers when **either** a `bad:` example **or** a clear,
+    specific `description` semantically matches the changed lines. A
+    literal snippet is no longer required.
+  - **Section 7 (Defensive Coding) carve-out preserved** — vague
+    descriptions (e.g. "type safety", "best practices") still do NOT
+    unlock null-guard suggestions; that path requires either a
+    matching `bad:` snippet or a description that names the exact
+    defensive pattern.
+
 ## [3.1.7] — 2026-05-08
 
 ### Fixed

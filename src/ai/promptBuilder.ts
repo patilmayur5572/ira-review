@@ -144,20 +144,22 @@ const REVIEW_CHECKLIST = `
 const REVIEW_CATEGORIES = "security, business-logic, race-condition, data-consistency, async, error-handling, defensive, best-practice";
 
 /**
- * v3.1.7: precedence rule that subordinates the checklist's "Do NOT report" /
- * "Skip" exceptions to specific Team Rules — but ONLY when a Team Rule has a
- * `bad:` example that matches the pattern in the diff. Vague rules that
- * loosely mention "type safety" or "best practices" do NOT override the
- * defensive-coding null-handling guards in section 7 of the checklist (that
- * was the source of the v3.0.x null-suggestion flood).
+ * v3.1.8: relaxed precedence rule. Team Rules win whenever the AI can
+ * SEMANTICALLY match the rule's `description` (and/or optional `bad:`
+ * example) to the code in the diff. A literal `bad:` snippet is no longer
+ * required — a clear rule like "no console.log in production code" is enough.
+ *
+ * Section 7 (Defensive Coding) remains protected against vague rules to
+ * avoid the v3.0.x null-suggestion flood: vague language like "type safety"
+ * or "best practices" alone does not unlock null-guard suggestions.
  *
  * Only emitted into the prompt when team rules are actually present, so the
  * AI's behaviour for projects without `.ira-rules.json` is unchanged.
  */
 const TEAM_RULES_PRECEDENCE = `
-**PRECEDENCE — Team Rules vs general checklist guidance.** When a Team Rule in the Team Rules section above has a \`bad:\` example whose pattern matches the diff, the Team Rule WINS over any "Do NOT report" / "Skip" clause in checklist sections 1–6, and over the general "style-only" / "when in doubt, do not report" framing in the Rules section. Report the violation, label it under Team Standards, and use the Team Rule's stated severity.
+**PRECEDENCE — Team Rules vs general checklist guidance.** When a Team Rule in the Team Rules section above semantically matches the code in the diff — i.e. the rule's \`description\` (or optional \`bad:\` example) clearly describes the pattern you see in the changed lines — the Team Rule WINS over any "Do NOT report" / "Skip" clause in checklist sections 1–6, and over the general "style-only" / "when in doubt, do not report" framing in the Rules section. Report the violation, label it under Team Standards, and use the Team Rule's stated severity. You do NOT need a literal \`bad:\` snippet — a clear, specific description is sufficient (e.g. "do not commit console.log statements" applies to any \`console.log(...)\` in the changed lines).
 
-**Exception — checklist Section 7 (Defensive Coding) is NOT overridden.** A Team Rule that loosely mentions "type safety", "best practices", "defensive coding", or similar broad concepts does NOT authorise reporting null/undefined check suggestions on values the type system, framework, or stdlib already guarantees. Only report null-handling issues that meet the strict criteria in Section 7 (i.e. a concrete runtime path to null with no guard). A Team Rule may only override Section 7 if it provides a specific \`bad:\` example that matches the exact code pattern in the diff.
+**Exception — checklist Section 7 (Defensive Coding) is NOT overridden by vague rules.** A Team Rule that only loosely mentions "type safety", "best practices", "defensive coding", or similar broad concepts does NOT authorise reporting null/undefined check suggestions on values the type system, framework, or stdlib already guarantees. To override Section 7 the rule must EITHER provide a specific \`bad:\` example matching the diff, OR have a description that names the exact defensive pattern required (e.g. "always null-check API response \`data\` before access").
 `;
 
 export function buildStandalonePrompt(

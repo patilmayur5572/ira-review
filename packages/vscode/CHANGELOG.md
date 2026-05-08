@@ -2,6 +2,18 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.1.8] — 2026-05-09
+
+### Version alignment
+
+- The extension version is now aligned with the bundled `ira-review` CLI version. From this release onwards, the extension and CLI share a single version number to make support and compatibility obvious. (No extension features were dropped going from 3.1.2 → 3.1.8 — the jump only reflects CLI parity.)
+
+### Underlying CLI
+
+- Bundles [`ira-review`](https://www.npmjs.com/package/ira-review) **3.1.8**, which fixes the standalone-prompt silencing of `.ira-rules.json` team rules. Team rules are now respected via **semantic match on the rule's `description`** (a literal `bad:` example is no longer required); the AI will flag patterns like `console.log(...)` as soon as a rule says "do not commit console.log statements", with no per-snippet enumeration. The Section 7 (Defensive Coding) carve-out remains in place to prevent the v3.0.x null-suggestion flood. See the [ira-review CHANGELOG](https://github.com/patilmayur5572/ira-review/blob/main/CHANGELOG.md#318--2026-05-09) for full details.
+- Cumulative CLI fixes since 3.1.2 also rolled in (PR-summary deduplication via hidden HTML marker, etc.).
+- All fixes are CLI-side and surface automatically in the extension's PR-review flow; no setting changes required.
+
 ## [3.1.2] — 2026-05-08
 
 ### Underlying CLI
