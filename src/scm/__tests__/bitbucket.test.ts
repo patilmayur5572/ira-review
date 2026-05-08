@@ -242,6 +242,111 @@ describe("BitbucketClient", () => {
     expect(result.get("src/page2.ts")).toBe("diff-p2");
   });
 
+  // ── v3.1.7: PR summary dedup via hidden HTML marker ────────────────────
+  describe("postSummary dedup (v3.1.7)", () => {
+    const summaryWithTag = "<!-- ira:summary -->\n### 🟢 IRA Review · LOW risk (0/100)\n\n0 findings";
+
+    it("findExistingSummaryCommentId returns id when an IRA summary exists", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          values: [
+            { id: 1, content: { raw: "human reviewer comment" } },
+            { id: 99, content: { raw: summaryWithTag } },
+          ],
+        }),
+      });
+
+      const client = new BitbucketClient({
+        token: "tok",
+        workspace: "ws",
+        repoSlug: "repo",
+      });
+      const id = await client.findExistingSummaryCommentId("8");
+      expect(id).toBe(99);
+    });
+
+    it("findExistingSummaryCommentId returns null when no IRA summary exists", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          values: [{ id: 1, content: { raw: "human reviewer comment" } }],
+        }),
+      });
+
+      const client = new BitbucketClient({
+        token: "tok",
+        workspace: "ws",
+        repoSlug: "repo",
+      });
+      const id = await client.findExistingSummaryCommentId("8");
+      expect(id).toBeNull();
+    });
+
+    it("postSummary edits in place via PUT when an existing IRA summary is found", async () => {
+      let editUrl = "";
+      let editMethod = "";
+      let editBody: Record<string, unknown> = {};
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              values: [{ id: 55, content: { raw: summaryWithTag } }],
+            }),
+          });
+        }
+        editUrl = url;
+        editMethod = method;
+        editBody = JSON.parse(init!.body as string);
+        return Promise.resolve({ ok: true });
+      });
+
+      const client = new BitbucketClient({
+        token: "tok",
+        workspace: "ws",
+        repoSlug: "repo",
+      });
+      await client.postSummary("<!-- ira:summary -->\nfresh", "8");
+
+      expect(editMethod).toBe("PUT");
+      expect(editUrl).toBe(
+        "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/8/comments/55",
+      );
+      expect((editBody.content as { raw: string }).raw).toBe("<!-- ira:summary -->\nfresh");
+    });
+
+    it("postSummary POSTs new when no existing IRA summary is found", async () => {
+      let postUrl = "";
+      let postMethod = "";
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ values: [] }),
+          });
+        }
+        postUrl = url;
+        postMethod = method;
+        return Promise.resolve({ ok: true });
+      });
+
+      const client = new BitbucketClient({
+        token: "tok",
+        workspace: "ws",
+        repoSlug: "repo",
+      });
+      await client.postSummary("<!-- ira:summary -->\nfresh", "8");
+
+      expect(postMethod).toBe("POST");
+      expect(postUrl).toBe(
+        "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/8/comments",
+      );
+    });
+  });
+
   it("soft-fails on individual file diff errors", async () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/diffstat")) {

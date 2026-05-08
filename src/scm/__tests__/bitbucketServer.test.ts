@@ -58,9 +58,22 @@ describe("BitbucketServerClient", () => {
   });
 
   it("strips trailing /rest/api/1.0 from baseUrl if user passed one", async () => {
-    let capturedUrl = "";
-    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
-      capturedUrl = url;
+    let postUrl = "";
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+      const method = init?.method ?? "GET";
+      // First: find-existing pagination — return one non-IRA comment, last page.
+      if (method === "GET" && url.includes("/activities")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            values: [{ action: "COMMENTED", comment: { id: 9, version: 0, text: "unrelated" } }],
+            isLastPage: true,
+          }),
+          headers: { get: () => "" },
+        });
+      }
+      // Second: the POST itself.
+      postUrl = url;
       return Promise.resolve({ ok: true, headers: { get: () => "" } });
     });
 
@@ -72,7 +85,7 @@ describe("BitbucketServerClient", () => {
     });
     await client.postSummary("hello", "1");
 
-    expect(capturedUrl).toBe(
+    expect(postUrl).toBe(
       "https://bitbucket.example.com/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/1/comments",
     );
   });
@@ -186,6 +199,103 @@ describe("BitbucketServerClient", () => {
   it("constructor throws when baseUrl missing", () => {
     const incomplete = { token: "t", workspace: "P", repoSlug: "r" } as BitbucketConfig;
     expect(() => new BitbucketServerClient(incomplete)).toThrow(/requires baseUrl/);
+  });
+
+  // ── v3.1.7: PR summary dedup via hidden HTML marker ────────────────────
+  describe("postSummary dedup (v3.1.7)", () => {
+    const summaryWithTag = "<!-- ira:summary -->\n### 🟢 IRA Review · LOW risk (0/100)\n\n0 findings";
+
+    it("findExistingSummaryCommentId returns id+version when an IRA summary exists", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          values: [
+            { action: "APPROVED" },
+            { action: "COMMENTED", comment: { id: 11, version: 0, text: "unrelated" } },
+            { action: "COMMENTED", comment: { id: 42, version: 3, text: summaryWithTag } },
+          ],
+          isLastPage: true,
+        }),
+        headers: { get: () => "" },
+      });
+
+      const found = await makeClient().findExistingSummaryCommentId("8");
+      expect(found).toEqual({ id: 42, version: 3 });
+    });
+
+    it("findExistingSummaryCommentId returns null when no IRA summary exists", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          values: [
+            { action: "COMMENTED", comment: { id: 1, version: 0, text: "human review" } },
+          ],
+          isLastPage: true,
+        }),
+        headers: { get: () => "" },
+      });
+
+      const found = await makeClient().findExistingSummaryCommentId("8");
+      expect(found).toBeNull();
+    });
+
+    it("postSummary edits in place via PUT (with version) when an existing IRA summary is found", async () => {
+      let editUrl = "";
+      let editMethod = "";
+      let editBody: Record<string, unknown> = {};
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET" && url.includes("/activities")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              values: [{ action: "COMMENTED", comment: { id: 77, version: 5, text: summaryWithTag } }],
+              isLastPage: true,
+            }),
+            headers: { get: () => "" },
+          });
+        }
+        editUrl = url;
+        editMethod = method;
+        editBody = JSON.parse(init!.body as string);
+        return Promise.resolve({ ok: true, headers: { get: () => "" } });
+      });
+
+      await makeClient().postSummary("<!-- ira:summary -->\nfresh", "8");
+
+      expect(editMethod).toBe("PUT");
+      expect(editUrl).toBe(
+        "https://bitbucket.example.com/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/8/comments/77",
+      );
+      expect(editBody.text).toBe("<!-- ira:summary -->\nfresh");
+      // Bitbucket Server REQUIRES the version field on PUT or it returns 409.
+      expect(editBody.version).toBe(5);
+    });
+
+    it("postSummary POSTs new when no existing IRA summary is found", async () => {
+      let postUrl = "";
+      let postMethod = "";
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET" && url.includes("/activities")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ values: [], isLastPage: true }),
+            headers: { get: () => "" },
+          });
+        }
+        postUrl = url;
+        postMethod = method;
+        return Promise.resolve({ ok: true, headers: { get: () => "" } });
+      });
+
+      await makeClient().postSummary("<!-- ira:summary -->\nfresh", "8");
+
+      expect(postMethod).toBe("POST");
+      expect(postUrl).toBe(
+        "https://bitbucket.example.com/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/8/comments",
+      );
+    });
   });
 });
 

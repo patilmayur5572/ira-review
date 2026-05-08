@@ -18,6 +18,7 @@ import type { BitbucketConfig, CommentStyle } from "../types/config.js";
 import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
 import { formatReviewComment } from "../utils/commentFormatter.js";
+import { IRA_SUMMARY_TAG } from "../core/summaryBuilder.js";
 
 /** Bitbucket Server JSON diff shape (returned by /pull-requests/{n}/diff). */
 interface BitbucketServerDiffResponse {
@@ -165,12 +166,93 @@ export class BitbucketServerClient implements SCMProvider {
   }
 
   async postSummary(summary: string, pullRequestId: string): Promise<void> {
+    // v3.1.7: dedup via hidden HTML marker. If a previous IRA summary already
+    // exists on this PR, EDIT it in place (PUT /comments/{id}); otherwise POST
+    // a fresh one. Stops the "one summary per push" noise observed in prod.
+    const existing = await this.findExistingSummaryCommentId(pullRequestId);
+    if (existing) {
+      await this.editSummary(pullRequestId, existing.id, existing.version, summary);
+      return;
+    }
     const url = this.prUrl(pullRequestId, "/comments");
     await withRetry(async () => {
       const response = await fetchWithTimeout(url, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify({ text: summary }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new RetryableError(
+          parseApiError(response.status, text, "Bitbucket Server"),
+          response.status,
+        );
+      }
+    });
+  }
+
+  /**
+   * Find a previously-posted IRA summary on this PR by scanning every PR
+   * comment for the hidden `IRA_SUMMARY_TAG`. Returns the comment id AND its
+   * current `version` integer — Bitbucket Server's PUT /comments/{id} REQUIRES
+   * `version` in the body or it returns 409 Conflict.
+   *
+   * Uses the same /activities pagination pattern as `getIssueComments` because
+   * GET /comments requires a `path` query param (it's the per-file inline-
+   * comments endpoint and 400s without it).
+   */
+  async findExistingSummaryCommentId(
+    pullRequestId: string,
+  ): Promise<{ id: number; version: number } | null> {
+    type CommentNode = { id?: number; version?: number; text?: string };
+    type Activity = { action?: string; comment?: CommentNode };
+
+    let start = 0;
+    while (true) {
+      const url = this.prUrl(pullRequestId, `/activities?start=${start}&limit=100`);
+      const data = await withRetry(async () => {
+        const response = await fetchWithTimeout(url, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, "Bitbucket Server"),
+            response.status,
+          );
+        }
+        return (await response.json()) as BBServerPaginatedResponse<Activity>;
+      });
+
+      for (const activity of data.values) {
+        if (activity.action !== "COMMENTED") continue;
+        const c = activity.comment;
+        if (
+          c &&
+          typeof c.id === "number" &&
+          typeof c.version === "number" &&
+          typeof c.text === "string" &&
+          c.text.includes(IRA_SUMMARY_TAG)
+        ) {
+          return { id: c.id, version: c.version };
+        }
+      }
+      if (data.isLastPage) break;
+      start = data.nextPageStart ?? start + 100;
+    }
+    return null;
+  }
+
+  private async editSummary(
+    pullRequestId: string,
+    commentId: number,
+    version: number,
+    summary: string,
+  ): Promise<void> {
+    const url = this.prUrl(pullRequestId, `/comments/${commentId}`);
+    await withRetry(async () => {
+      const response = await fetchWithTimeout(url, {
+        method: "PUT",
+        headers: this.headers,
+        body: JSON.stringify({ text: summary, version }),
       });
       if (!response.ok) {
         const text = await response.text();

@@ -1,6 +1,7 @@
 import type { BitbucketConfig } from "../types/config.js";
 import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
+import { IRA_SUMMARY_TAG } from "../core/summaryBuilder.js";
 
 export class BitbucketClient implements SCMProvider {
   private readonly baseUrl: string;
@@ -82,14 +83,34 @@ export class BitbucketClient implements SCMProvider {
     summary: string,
     pullRequestId: string,
   ): Promise<void> {
-    const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/comments`;
+    // v3.1.7: dedup via hidden HTML marker. Edit the existing IRA summary
+    // comment in place (PUT /comments/{id}) instead of POSTing a new one on
+    // every pipeline run.
+    const existingId = await this.findExistingSummaryCommentId(pullRequestId);
+    const baseUrl = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/comments`;
 
-    const body = {
-      content: { raw: summary },
-    };
+    const body = { content: { raw: summary } };
+
+    if (existingId !== null) {
+      await withRetry(async () => {
+        const response = await fetchWithTimeout(`${baseUrl}/${existingId}`, {
+          method: "PUT",
+          headers: this.headers,
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, 'Bitbucket'),
+            response.status,
+          );
+        }
+      });
+      return;
+    }
 
     await withRetry(async () => {
-      const response = await fetchWithTimeout(url, {
+      const response = await fetchWithTimeout(baseUrl, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify(body),
@@ -103,6 +124,39 @@ export class BitbucketClient implements SCMProvider {
         );
       }
     });
+  }
+
+  /**
+   * Find a previously-posted IRA summary on this PR by paging through
+   * /pullrequests/{id}/comments and matching the hidden `IRA_SUMMARY_TAG`.
+   * Returns the comment id or null. Bitbucket Cloud's PUT /comments/{id}
+   * does NOT require a version field (unlike Bitbucket Server).
+   */
+  async findExistingSummaryCommentId(
+    pullRequestId: string,
+  ): Promise<number | null> {
+    let url: string | undefined =
+      `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/pullrequests/${pullRequestId}/comments?pagelen=100`;
+    while (url) {
+      const data = await withRetry(async () => {
+        const response = await fetchWithTimeout(url!, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, 'Bitbucket'),
+            response.status,
+          );
+        }
+        return (await response.json()) as { values: Array<{ id: number; content?: { raw?: string } }>; next?: string };
+      });
+      for (const c of data.values) {
+        if (c.content?.raw && c.content.raw.includes(IRA_SUMMARY_TAG)) {
+          return c.id;
+        }
+      }
+      url = data.next;
+    }
+    return null;
   }
 
   async getIssueComments(pullRequestId: string): Promise<string[]> {

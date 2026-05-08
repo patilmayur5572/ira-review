@@ -3,6 +3,104 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.7] — 2026-05-08
+
+### Fixed
+
+- **Standalone-mode prompt silenced team rules in `.ira-rules.json`.**
+  Production validation against a real PR (a deliberate `console.log`
+  insertion in a tRPC procedure file matched by an `api/**/*.ts` rule)
+  returned `Issues found: 0` even though the team had a matching team
+  rule (`proper-logging-levels`, MINOR, with a `bad: console.log('start
+  procedure');` example). Root cause: the hard-coded standalone-review
+  prompt in `src/ai/promptBuilder.ts` contains seven `Do NOT report:`
+  exception lists (one per checklist category) plus the global "Skip
+  style-only concerns: naming, formatting, import order, pattern
+  preferences, missing comments" line and a "when in doubt, do not
+  report" framing. Claude / Copilot CLI honoured those silencers AND
+  silenced the matching team rule, because nothing in the prompt told
+  them which authority wins.
+  - **Fix**: when team rules are passed, the prompt now appends a
+    `PRECEDENCE — Team Rules vs general checklist guidance` paragraph
+    that subordinates every "Do NOT report" / "Skip" clause in
+    checklist sections 1–6 (and the global "style-only" / "when in
+    doubt" framing) to **specific** team rules whose `bad:` example
+    matches the diff. Vague rules with no matching snippet do **not**
+    override the silencers.
+  - **Section 7 (Defensive Coding) is explicitly NOT overridden** —
+    a team rule that loosely mentions "type safety", "best practices",
+    or "defensive coding" without a specific `bad:` snippet for the
+    exact code pattern in the diff cannot re-open the v3.0.x
+    null-suggestion floodgate. Section 7's framework-null-safety
+    guards remain authoritative.
+  - **Behaviour for projects with no `.ira-rules.json` is unchanged** —
+    the precedence paragraph is only emitted when `teamRulesSection`
+    is provided to `buildStandalonePrompt`, so consumers without team
+    rules get the same conservative defaults as in 3.1.6.
+  - Test count: 511 → 515 (4 new tests in
+    `src/ai/__tests__/promptBuilder.test.ts` cover the precedence
+    paragraph being emitted only when team rules exist, the Section 7
+    carve-out being preserved, and the verbatim Section 7 guards
+    remaining in the checklist).
+
+- **PR summary deduplication — one comment per PR, not per push.** Production
+  CI runs were posting a fresh IRA summary comment on every pipeline
+  trigger (i.e. every push to the source branch), cluttering the PR with
+  N nearly-identical summaries. `ReviewEngine.run()`
+  has always called `scmClient.postSummary()` unconditionally on each run, and
+  before this release `postSummary()` had **zero** dedup logic — it always
+  POSTed a new top-level comment. Inline review comments were already
+  deduplicated by `CommentTracker.getExistingIraComments()` (since v3.0.0),
+  but summaries were not.
+  - **Fix**: a hidden HTML marker `<!-- ira:summary -->` (exported as
+    `IRA_SUMMARY_TAG` from `src/core/summaryBuilder.ts`) is now emitted as
+    the very first line of every IRA summary. Renders as nothing in
+    Bitbucket / GitHub markdown.
+  - All three SCM clients gained a `findExistingSummaryCommentId(prId)`
+    method that pages through the PR's top-level comments, finds the one
+    containing `IRA_SUMMARY_TAG`, and returns its id (plus `version` for
+    Bitbucket Server, which 409s on `PUT /comments/{id}` without it).
+    `postSummary()` now calls `findExistingSummaryCommentId` first; if a
+    previous IRA summary exists it **edits in place** (`PUT` on Bitbucket /
+    Bitbucket Server, `PATCH /issues/comments/{id}` on GitHub) instead of
+    POSTing a new comment.
+  - **Endpoint choice mirrors the per-provider conventions already in use
+    by `getExistingIraComments`**: Bitbucket Server uses `/activities`
+    (because `GET /comments` 400s without a `path` query param — see
+    v3.1.4 fix); Bitbucket Cloud uses `/pullrequests/{id}/comments` with
+    `.next` pagination; GitHub uses `/issues/{id}/comments` (NOT
+    `/pulls/.../comments`, which is review-comments-only).
+  - **Inline-comment dedup is unaffected.** The summary tag has no
+    `file=`/`line=`/`rule=` fields, so the inline-dedup regex
+    `IRA_META_RE = /<!-- ira:file=(...);line=(\d+);rule=(...) -->/` in
+    `src/scm/commentTracker.ts` does not match it. Verified by a new
+    regression suite in `commentTracker.test.ts` that covers (1) the
+    literal tag, (2) the full `buildSummary` output, (3) the Bitbucket
+    Cloud `comment.inline` fallback, (4) the GitHub `**File:**` issue-
+    comment fallback, and (5) the Bitbucket Server `/activities`
+    fallback all continue to behave correctly.
+  - Test count: 493 → 511 (18 new tests cover find-existing happy path +
+    no-existing-fallback for all three providers, plus the inline-dedup
+    regression tests above).
+
+### Why this ships separately from 3.1.6
+
+3.1.6 was already published to npm before the multi-summary noise and the
+prompt-silencer behaviour were observed in the wild. Rather than republish
+3.1.6 (impossible — npm versions are immutable) or tag 3.1.6 as broken (it
+isn't; the summary redesign and Windows Copilot CLI fix work as designed),
+this is a focused follow-on patch that adds **only** the dedup behaviour
+and the team-rules precedence paragraph. No other code paths are touched.
+
+### Unchanged from 3.1.6
+
+- VS Code extension stays at `3.1.2` — it consumes the structured
+  `ReviewResult`, never the markdown summary, so it is unaffected by both
+  3.1.6's redesign and 3.1.7's dedup tag.
+- `buildSummary(result, meta?)` signature is unchanged; the tag is constant.
+- README files are unchanged — this is an internal posting-behaviour fix,
+  not a user-facing feature.
+
 ## [3.1.6] — 2026-05-08
 
 ### Changed
@@ -15,7 +113,7 @@ The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
   - **Headline**: `### 🟢 IRA Review · LOW risk (0/100)` — single line,
     one status dot whose colour reflects the **worst signal** across
     risk level + AC gap + BLOCKER findings (worst-wins precedence).
-  - **Metrics line**: `5 files reviewed · 1 finding · CBBT-86165: 3/5
+  - **Metrics line**: `5 files reviewed · 1 finding · PROJ-1234: 3/5
     ACs met` — single dot-separated line replaces the 4-row overview
     table.
   - **Sections**: `Findings`, `Acceptance Criteria — <KEY> (% covered,

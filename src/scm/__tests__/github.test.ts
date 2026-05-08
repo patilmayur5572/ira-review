@@ -146,13 +146,24 @@ describe("GitHubClient", () => {
     expect(postUrl).not.toContain("/pulls/");
   });
 
-  it("posts summary to issues endpoint", async () => {
+  it("posts summary to issues endpoint when no existing IRA summary is found", async () => {
     let capturedUrl = "";
     let capturedBody = "";
+    let capturedMethod = "";
 
     globalThis.fetch = vi.fn().mockImplementation((url: string, init) => {
+      // First call: find-existing pagination — returns no IRA-tagged comment.
+      if ((init?.method ?? "GET") === "GET") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { id: 1, body: "Some unrelated reviewer comment" },
+          ]),
+        });
+      }
       capturedUrl = url;
       capturedBody = init?.body as string;
+      capturedMethod = init?.method ?? "";
       return Promise.resolve({ ok: true });
     });
 
@@ -164,6 +175,7 @@ describe("GitHubClient", () => {
 
     await client.postSummary("# Summary\nAll good", "7");
 
+    expect(capturedMethod).toBe("POST");
     expect(capturedUrl).toBe(
       "https://api.github.com/repos/org/repo/issues/7/comments",
     );
@@ -318,5 +330,104 @@ describe("GitHubClient", () => {
     expect(result.has("file0.ts")).toBe(true);
     expect(result.has("file99.ts")).toBe(true);
     expect(result.has("file100.ts")).toBe(true);
+  });
+
+  // ── v3.1.7: PR summary dedup via hidden HTML marker ────────────────────
+  describe("postSummary dedup (v3.1.7)", () => {
+    const summaryWithTag = "<!-- ira:summary -->\n### 🟢 IRA Review · LOW risk (0/100)\n\n0 findings";
+
+    it("findExistingSummaryCommentId returns id when an IRA summary exists", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([
+          { id: 1, body: "human reviewer comment" },
+          { id: 42, body: summaryWithTag },
+        ]),
+      });
+
+      const client = new GitHubClient({
+        token: "gh-tok",
+        owner: "org",
+        repo: "repo",
+      });
+      const id = await client.findExistingSummaryCommentId("8");
+      expect(id).toBe(42);
+    });
+
+    it("findExistingSummaryCommentId returns null when no IRA summary exists", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([{ id: 1, body: "human reviewer comment" }]),
+      });
+
+      const client = new GitHubClient({
+        token: "gh-tok",
+        owner: "org",
+        repo: "repo",
+      });
+      const id = await client.findExistingSummaryCommentId("8");
+      expect(id).toBeNull();
+    });
+
+    it("postSummary edits in place via PATCH /issues/comments/{id} when an existing IRA summary is found", async () => {
+      let editUrl = "";
+      let editMethod = "";
+      let editBody: Record<string, unknown> = {};
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([{ id: 99, body: summaryWithTag }]),
+          });
+        }
+        editUrl = url;
+        editMethod = method;
+        editBody = JSON.parse(init!.body as string);
+        return Promise.resolve({ ok: true });
+      });
+
+      const client = new GitHubClient({
+        token: "gh-tok",
+        owner: "org",
+        repo: "repo",
+      });
+      await client.postSummary("<!-- ira:summary -->\nfresh", "8");
+
+      expect(editMethod).toBe("PATCH");
+      expect(editUrl).toBe(
+        "https://api.github.com/repos/org/repo/issues/comments/99",
+      );
+      expect(editBody.body).toBe("<!-- ira:summary -->\nfresh");
+    });
+
+    it("postSummary POSTs new when no existing IRA summary is found", async () => {
+      let postUrl = "";
+      let postMethod = "";
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init: RequestInit | undefined) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([]),
+          });
+        }
+        postUrl = url;
+        postMethod = method;
+        return Promise.resolve({ ok: true });
+      });
+
+      const client = new GitHubClient({
+        token: "gh-tok",
+        owner: "org",
+        repo: "repo",
+      });
+      await client.postSummary("<!-- ira:summary -->\nfresh", "8");
+
+      expect(postMethod).toBe("POST");
+      expect(postUrl).toBe(
+        "https://api.github.com/repos/org/repo/issues/8/comments",
+      );
+    });
   });
 });

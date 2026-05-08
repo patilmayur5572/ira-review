@@ -341,4 +341,75 @@ describe("buildStandalonePrompt", () => {
     expect(prompt).toContain("Skip style-only concerns");
     expect(prompt).toContain("Skip speculative defensive-coding suggestions");
   });
+
+  // ── v3.1.7: Team Rules precedence over silencer clauses ────────────────
+  // Regression for a real-world case: a project's `.ira-rules.json` declared
+  // a team rule against `console.log` (with a matching `bad:` snippet), the
+  // AI silenced it, and the team's CI pipeline reported zero findings on a
+  // PR that obviously violated the rule. Root cause: the hard-coded prompt
+  // says "Do NOT report ... console.log in non-production code paths" in
+  // section 1 (Security) AND "Skip style-only concerns: naming, formatting,
+  // import order, pattern preferences, missing comments" in the Rules block,
+  // and Claude/Copilot were obeying both — silencing every team rule in
+  // .ira-rules.json that targeted those patterns. The fix: when team rules
+  // are passed, append a precedence paragraph that subordinates the
+  // silencers to specific team rules with matching `bad:` examples, while
+  // keeping the Defensive Coding null-handling guards (section 7)
+  // authoritative to prevent the v3.0.x null-suggestion flood.
+  describe("v3.1.7 — Team Rules precedence", () => {
+    const sampleRulesSection = "## Team Rules\n- proper-logging-levels (MINOR): Do not use console.log\n  bad: console.log('start procedure');\n  paths: api/**/*.ts";
+
+    it("emits the precedence paragraph when team rules are provided", () => {
+      const prompt = buildStandalonePrompt(
+        "api/server/healthCheck.ts",
+        "+console.log('healthCheck called');",
+        null,
+        null,
+        sampleRulesSection,
+      );
+      expect(prompt).toContain("PRECEDENCE — Team Rules vs general checklist guidance");
+      expect(prompt).toContain("Team Rule WINS over any \"Do NOT report\" / \"Skip\" clause in checklist sections 1–6");
+      expect(prompt).toContain("style-only");
+    });
+
+    it("preserves the Section 7 (Defensive Coding) carve-out so null suggestions stay suppressed", () => {
+      const prompt = buildStandalonePrompt(
+        "api/server/healthCheck.ts",
+        "+console.log('healthCheck called');",
+        null,
+        null,
+        sampleRulesSection,
+      );
+      // The carve-out is what stops a vague rule like `no-any-type` from
+      // re-opening the null-suggestion floodgate Claude exhibited in v3.0.x.
+      expect(prompt).toContain("checklist Section 7 (Defensive Coding) is NOT overridden");
+      expect(prompt).toContain("type safety");
+      expect(prompt).toContain("specific `bad:` example that matches the exact code pattern");
+    });
+
+    it("does NOT emit the precedence paragraph when team rules are absent (no behaviour change for non-rules consumers)", () => {
+      const prompt = buildStandalonePrompt(
+        "api/server/healthCheck.ts",
+        "+console.log('healthCheck called');",
+        null,
+      );
+      expect(prompt).not.toContain("PRECEDENCE — Team Rules vs general checklist guidance");
+      expect(prompt).not.toContain("checklist Section 7 (Defensive Coding) is NOT overridden");
+    });
+
+    it("still includes Section 7's null-handling guards in the checklist (precedence rule must not delete them)", () => {
+      const prompt = buildStandalonePrompt(
+        "api/server/healthCheck.ts",
+        "+console.log('healthCheck called');",
+        null,
+        null,
+        sampleRulesSection,
+      );
+      // Sanity: Section 7 verbatim guards must still be present so the AI
+      // can apply them when no specific team-rule snippet matches.
+      expect(prompt).toContain("Defensive Coding");
+      expect(prompt).toContain("framework-provided null safety");
+      expect(prompt).toContain("Skip: suggestions to \"add a null check just in case\"");
+    });
+  });
 });

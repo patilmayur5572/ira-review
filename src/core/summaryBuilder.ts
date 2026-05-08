@@ -1,6 +1,24 @@
 import type { ReviewResult, SummaryMeta } from "../types/review.js";
 
 /**
+ * Hidden HTML marker emitted on the very first line of every IRA PR summary.
+ *
+ * Used by the SCM clients (`BitbucketServerClient`, `BitbucketClient`,
+ * `GitHubClient`) to find a previously-posted IRA summary on the same PR so
+ * subsequent runs can EDIT the existing comment instead of POSTing a new one
+ * (was producing one summary comment per push to the source branch — see
+ * v3.1.7 changelog).
+ *
+ * Intentionally distinct from the inline-comment marker shape
+ * (`<!-- ira:file=...;line=...;rule=... -->`) so the inline-dedup regex
+ * `IRA_META_RE` in `src/scm/commentTracker.ts` does NOT match it. Verified
+ * by `summary tag is not picked up by inline IRA_META_RE` regression test.
+ *
+ * Renders as nothing in Bitbucket / GitHub markdown (HTML comment).
+ */
+export const IRA_SUMMARY_TAG = "<!-- ira:summary -->";
+
+/**
  * v3.1.6 PR summary — professional, scannable engineering report.
  *
  * Replaces the v3.1.5 "AI-slop" output (multi-line celebration block,
@@ -25,6 +43,11 @@ export function buildSummary(result: ReviewResult, meta: SummaryMeta = {}): stri
   const riskLevel = result.risk?.level ?? "LOW";
   const riskScore = result.risk?.score ?? 0;
   const riskMax = result.risk?.maxScore ?? 100;
+
+  // ── Hidden dedup marker ─────────────────────────────────────────────────
+  // Must be the FIRST line so the SCM clients can do a cheap substring scan
+  // when paging through PR comments. Renders as nothing in markdown.
+  lines.push(IRA_SUMMARY_TAG);
 
   // ── Headline ────────────────────────────────────────────────────────────
   lines.push(`### ${dot} IRA Review · ${riskLevel} risk (${riskScore}/${riskMax})`);
@@ -233,9 +256,9 @@ function acGapRank(result: ReviewResult): 0 | 1 {
 
 /**
  * Build the AC fragment of the metrics line. Mutually exclusive cases:
- *   • requirementCompletion → "CBBT-86165: 3/5 ACs met"
- *   • acceptanceValidation  → "CBBT-86165: ACs met" / "CBBT-86165: AC gaps"
- *   • acGeneration          → "CBBT-86165: 4 ACs suggested"
+ *   • requirementCompletion → "PROJ-1234: 3/5 ACs met"
+ *   • acceptanceValidation  → "PROJ-1234: ACs met" / "PROJ-1234: AC gaps"
+ *   • acGeneration          → "PROJ-1234: 4 ACs suggested"
  *   • none                  → null (omit segment)
  */
 function formatAcMetric(result: ReviewResult): string | null {

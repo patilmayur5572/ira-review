@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { CommentTracker, deduplicateKey } from "../commentTracker.js";
+import { IRA_SUMMARY_TAG, buildSummary } from "../../core/summaryBuilder.js";
+import type { ReviewResult } from "../../types/review.js";
 
 describe("CommentTracker", () => {
   const originalFetch = globalThis.fetch;
@@ -331,5 +333,137 @@ describe("deduplicateKey", () => {
 
   it("builds key from file, line and rule", () => {
     expect(deduplicateKey("src/app.ts", 10, "no-any-type")).toBe("src/app.ts:10:no-any-type");
+  });
+});
+
+// ── v3.1.7 regression: summary tag must NOT pollute inline dedup ─────────
+//
+// The summary dedup tag (`<!-- ira:summary -->`) MUST NOT be matched by the
+// inline-comment dedup regex (`IRA_META_RE`) in commentTracker.ts. The regex
+// requires `file=`/`line=`/`rule=` fields; the summary tag has none, so the
+// match fails and the summary comment is never added to the inline dedup Set.
+// This guards against a future change to either the summary tag or the regex
+// silently breaking inline dedup (would cause IRA to think every line was
+// already commented and skip ALL inline findings).
+describe("v3.1.7 — IRA_SUMMARY_TAG vs inline IRA_META_RE", () => {
+  // Mirror the regex in commentTracker.ts so the test fails loudly if either
+  // side is changed without updating the other. We deliberately re-declare it
+  // here rather than exporting from the production module — this keeps the
+  // production surface area unchanged and treats the regex as a behavioural
+  // contract under test.
+  const IRA_META_RE = /<!-- ira:file=([^;]+);line=(\d+);rule=([^\s]+) -->/;
+
+  it("the literal summary tag does not match IRA_META_RE", () => {
+    expect(IRA_META_RE.test(IRA_SUMMARY_TAG)).toBe(false);
+  });
+
+  it("a full buildSummary output (which begins with the summary tag) does not match IRA_META_RE", () => {
+    const cleanResult: ReviewResult = {
+      pullRequestId: "1",
+      framework: null,
+      reviewMode: "standalone",
+      totalIssues: 0,
+      reviewedIssues: 0,
+      comments: [],
+      commentsPosted: 0,
+      risk: { level: "LOW", score: 0, maxScore: 100, factors: [], summary: "" },
+      complexity: null,
+      acceptanceValidation: null,
+      testGeneration: null,
+      requirementCompletion: null,
+    };
+    const summary = buildSummary(cleanResult);
+    expect(summary.startsWith(IRA_SUMMARY_TAG)).toBe(true);
+    expect(IRA_META_RE.test(summary)).toBe(false);
+  });
+
+  it("a real inline IRA marker DOES still match IRA_META_RE (sanity check)", () => {
+    const inlineMarker = "<!-- ira:file=src/app.ts;line=42;rule=no-any-type -->";
+    expect(IRA_META_RE.test(inlineMarker)).toBe(true);
+  });
+
+  it("inline-dedup Bitbucket Cloud path: a summary-tagged comment is NOT added to dedup keys, while inline ones still are", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        values: [
+          // Top-level summary comment — should be ignored for inline dedup.
+          { id: 50, content: { raw: `${IRA_SUMMARY_TAG}\n### 🟢 IRA Review · LOW risk (0/100)` } },
+          // Real inline comment — must still be tracked.
+          {
+            id: 51,
+            content: { raw: "<!-- ira:file=src/app.ts;line=10;rule=no-any -->\n🔍 **IRA Review** - `no-any` (MAJOR)" },
+            inline: { path: "src/app.ts", to: 10 },
+          },
+        ],
+      }),
+    });
+
+    const tracker = new CommentTracker({ token: "tok", workspace: "ws", repoSlug: "repo" });
+    const keys = await tracker.getExistingIraComments("42");
+
+    // Only the inline comment produces a dedup key — the summary tag does not.
+    expect(keys.size).toBe(1);
+    expect(keys.has("src/app.ts:10:no-any")).toBe(true);
+  });
+
+  it("inline-dedup GitHub issue-comment fallback: a summary-tagged comment without **File:** does NOT add a stray dedup key", async () => {
+    let calls = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      calls++;
+      // Page 1 = review-comments endpoint (empty), page 2 = issue-comments
+      // endpoint with our summary-tagged comment.
+      if (calls === 1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      }
+      if (calls === 2) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { id: 1, body: `${IRA_SUMMARY_TAG}\n### 🟢 IRA Review · LOW risk (0/100)` },
+          ]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+
+    const tracker = new CommentTracker(
+      { token: "tok", owner: "org", repo: "repo" },
+      "github",
+    );
+    const keys = await tracker.getExistingIraComments("42");
+
+    // Summary tag has no `**File:** \`...\`` line, so the issue-comment regex
+    // fallback also fails — no dedup key is added. Set must be empty.
+    expect(keys.size).toBe(0);
+  });
+
+  it("inline-dedup Bitbucket Server fallback: summary-tagged activity is NOT added to dedup keys", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        values: [
+          { action: "COMMENTED", comment: { id: 1, version: 0, text: `${IRA_SUMMARY_TAG}\nsummary body` } },
+          {
+            action: "COMMENTED",
+            comment: {
+              id: 2,
+              version: 0,
+              text: "<!-- ira:file=src/util.ts;line=7;rule=r1 -->\n🔍 **IRA Review** - `r1` (MAJOR)",
+            },
+          },
+        ],
+        isLastPage: true,
+      }),
+    });
+
+    const tracker = new CommentTracker(
+      { baseUrl: "https://bb.corp.com", token: "tok", project: "PROJ", repoSlug: "repo" },
+      "bitbucket-server",
+    );
+    const keys = await tracker.getExistingIraComments("42");
+
+    expect(keys.size).toBe(1);
+    expect(keys.has("src/util.ts:7:r1")).toBe(true);
   });
 });

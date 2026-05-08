@@ -132,7 +132,7 @@ describe("buildSummary — v3.1.6 redesign", () => {
         ...baseResult,
         comments: [],
         requirementCompletion: {
-          jiraKey: "CBBT-86165",
+          jiraKey: "PROJ-1234",
           summary: "Test",
           completionPercentage: 60,
           metCriteria: 3,
@@ -143,7 +143,7 @@ describe("buildSummary — v3.1.6 redesign", () => {
         },
       };
       const summary = buildSummary(withReq);
-      expect(summary).toContain("3 files reviewed · 0 findings · CBBT-86165: 3/5 ACs met");
+      expect(summary).toContain("3 files reviewed · 0 findings · PROJ-1234: 3/5 ACs met");
     });
 
     it("singularises 'finding' for exactly one finding", () => {
@@ -351,12 +351,14 @@ describe("buildSummary — v3.1.6 redesign", () => {
 
   describe("footer", () => {
     it("renders ira-review with version and provider/model when meta is supplied", () => {
+      // Version string is a fixture — the test asserts the formatter wires
+      // whatever version was passed in, not any specific package version.
       const summary = buildSummary(baseResult, {
-        version: "3.1.6",
+        version: "9.9.9",
         aiProvider: "copilot-cli",
         aiModel: "claude-sonnet-4.5",
       });
-      expect(summary).toContain("_ira-review 3.1.6 · copilot-cli/claude-sonnet-4.5_");
+      expect(summary).toContain("_ira-review 9.9.9 · copilot-cli/claude-sonnet-4.5_");
     });
 
     it("renders just 'ira-review' when no meta is supplied", () => {

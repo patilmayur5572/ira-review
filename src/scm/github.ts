@@ -1,6 +1,7 @@
 import type { GitHubConfig } from "../types/config.js";
 import type { ReviewComment, SCMProvider, PRState } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
+import { IRA_SUMMARY_TAG } from "../core/summaryBuilder.js";
 
 export class GitHubClient implements SCMProvider {
   private readonly baseUrl: string;
@@ -45,6 +46,29 @@ export class GitHubClient implements SCMProvider {
     summary: string,
     pullRequestId: string,
   ): Promise<void> {
+    // v3.1.7: dedup via hidden HTML marker. Edit the existing IRA summary
+    // comment in place (PATCH /issues/comments/{id}) instead of POSTing a new
+    // one on every pipeline run.
+    const existingId = await this.findExistingSummaryCommentId(pullRequestId);
+    if (existingId !== null) {
+      const editUrl = `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/comments/${existingId}`;
+      await withRetry(async () => {
+        const response = await fetchWithTimeout(editUrl, {
+          method: "PATCH",
+          headers: this.headers,
+          body: JSON.stringify({ body: summary }),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, 'GitHub'),
+            response.status,
+          );
+        }
+      });
+      return;
+    }
+
     const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/comments`;
 
     await withRetry(async () => {
@@ -62,6 +86,40 @@ export class GitHubClient implements SCMProvider {
         );
       }
     });
+  }
+
+  /**
+   * Find a previously-posted IRA summary on this PR by paging through
+   * /issues/{id}/comments (NOT /pulls/.../comments — that endpoint is for
+   * inline review comments only, summaries live as issue-comments). Matches
+   * the hidden `IRA_SUMMARY_TAG` and returns the comment id or null.
+   */
+  async findExistingSummaryCommentId(
+    pullRequestId: string,
+  ): Promise<number | null> {
+    let page = 1;
+    while (true) {
+      const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${pullRequestId}/comments?per_page=100&page=${page}`;
+      const comments = await withRetry(async () => {
+        const response = await fetchWithTimeout(url, { headers: this.headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new RetryableError(
+            parseApiError(response.status, text, 'GitHub'),
+            response.status,
+          );
+        }
+        return (await response.json()) as Array<{ id: number; body?: string }>;
+      });
+      for (const c of comments) {
+        if (typeof c.body === "string" && c.body.includes(IRA_SUMMARY_TAG)) {
+          return c.id;
+        }
+      }
+      if (comments.length < 100) break;
+      page++;
+    }
+    return null;
   }
 
   async getIssueComments(pullRequestId: string): Promise<string[]> {

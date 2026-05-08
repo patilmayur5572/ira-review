@@ -143,6 +143,23 @@ const REVIEW_CHECKLIST = `
 // Canonical list of all categories for JSON output validation
 const REVIEW_CATEGORIES = "security, business-logic, race-condition, data-consistency, async, error-handling, defensive, best-practice";
 
+/**
+ * v3.1.7: precedence rule that subordinates the checklist's "Do NOT report" /
+ * "Skip" exceptions to specific Team Rules — but ONLY when a Team Rule has a
+ * `bad:` example that matches the pattern in the diff. Vague rules that
+ * loosely mention "type safety" or "best practices" do NOT override the
+ * defensive-coding null-handling guards in section 7 of the checklist (that
+ * was the source of the v3.0.x null-suggestion flood).
+ *
+ * Only emitted into the prompt when team rules are actually present, so the
+ * AI's behaviour for projects without `.ira-rules.json` is unchanged.
+ */
+const TEAM_RULES_PRECEDENCE = `
+**PRECEDENCE — Team Rules vs general checklist guidance.** When a Team Rule in the Team Rules section above has a \`bad:\` example whose pattern matches the diff, the Team Rule WINS over any "Do NOT report" / "Skip" clause in checklist sections 1–6, and over the general "style-only" / "when in doubt, do not report" framing in the Rules section. Report the violation, label it under Team Standards, and use the Team Rule's stated severity.
+
+**Exception — checklist Section 7 (Defensive Coding) is NOT overridden.** A Team Rule that loosely mentions "type safety", "best practices", "defensive coding", or similar broad concepts does NOT authorise reporting null/undefined check suggestions on values the type system, framework, or stdlib already guarantees. Only report null-handling issues that meet the strict criteria in Section 7 (i.e. a concrete runtime path to null with no guard). A Team Rule may only override Section 7 if it provides a specific \`bad:\` example that matches the exact code pattern in the diff.
+`;
+
 export function buildStandalonePrompt(
   filePath: string,
   diff: string,
@@ -176,7 +193,7 @@ ${escapeSentinels(diff.slice(0, 6000))}
 ${rulesBlock}${sensitiveBlock}
 ## Review Checklist
 Check all categories below, but ONLY report issues where you have strong evidence from the code shown. Reporting zero issues is the correct answer for clean code. A false positive wastes more developer time than a missed bug — when in doubt, do not report.
-${REVIEW_CHECKLIST}${teamRulesSection ? `\n### 8. Team Standards  [category: best-practice]\n- Team coding standards (check against the Team Rules section above)\n` : ""}
+${REVIEW_CHECKLIST}${teamRulesSection ? `\n### 8. Team Standards  [category: best-practice]\n- Team coding standards (check against the Team Rules section above)\n${TEAM_RULES_PRECEDENCE}` : ""}
 ## Rules
 - Check every category, not just the obvious ones. Race conditions, async bugs, and business logic errors are the hardest to catch and the most valuable to report.
 - Skip style-only concerns: naming, formatting, import order, pattern preferences, missing comments. Those are not bugs.
