@@ -41,6 +41,27 @@ export interface ReviewResult {
   requirementCompletion?: RequirementCompletionResult | null;
   warnings?: string[];
   acGeneration?: ACGenerationResult | null;
+  /**
+   * Distinct file count actually inspected by IRA (post-filter, pre-finding).
+   * Used by the v3.1.6 summary header's metrics line so a clean PR can still
+   * say "5 files reviewed · 0 findings" instead of leaving the reviewer
+   * wondering whether IRA looked at anything at all. Optional for backwards
+   * compatibility with callers that haven't been updated.
+   */
+  filesReviewed?: number;
+}
+
+/**
+ * Metadata passed to `buildSummary` for the v3.1.6 footer line
+ * (`_ira-review 3.1.6 · copilot-cli/claude-sonnet-4.5_`). Kept as a separate
+ * argument rather than baked into ReviewResult so test fixtures and other
+ * callers don't need to know about CLI-level concerns (version pinning,
+ * provider plumbing) to construct a result.
+ */
+export interface SummaryMeta {
+  version?: string;
+  aiProvider?: string;
+  aiModel?: string;
 }
 
 export interface AIProvider {

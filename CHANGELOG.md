@@ -3,6 +3,63 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.6] — 2026-05-08
+
+### Changed
+
+- **PR summary redesign — professional, scannable engineering report.**
+  Replaced the v3.1.5 "AI-slop" output (multi-line celebration block,
+  conversational greetings like "Nice work on PR #42!", redundant risk
+  badges, large overview table) with a single load-bearing status-dot
+  headline, one metrics line, and structured sections.
+  - **Headline**: `### 🟢 IRA Review · LOW risk (0/100)` — single line,
+    one status dot whose colour reflects the **worst signal** across
+    risk level + AC gap + BLOCKER findings (worst-wins precedence).
+  - **Metrics line**: `5 files reviewed · 1 finding · CBBT-86165: 3/5
+    ACs met` — single dot-separated line replaces the 4-row overview
+    table.
+  - **Sections**: `Findings`, `Acceptance Criteria — <KEY> (% covered,
+    n/m)`, `Risk Factors` (Sonar mode only), `Complexity Hotspots`,
+    `Suggested Acceptance Criteria — <KEY>`, `Generated Test Cases`.
+    Each section is self-contained; missing data omits the section
+    rather than rendering "N/A" rows.
+  - **Footer**: single italicised line `_ira-review 3.1.6 ·
+    copilot-cli/claude-sonnet-4.5_` followed by the human-approval
+    reminder. Provider/model now surfaced so reviewers can see
+    which AI produced the findings.
+  - **`ReviewResult.filesReviewed`** added (optional) — populated by
+    `ReviewEngine.run()` so the metrics line can report file count
+    even on a clean PR (sonar mode = files with issues; standalone =
+    files in diff). Prior summary had no way to surface this.
+  - **VS Code extension is unaffected** — it builds its own webview
+    HTML from the structured `ReviewResult`, never the markdown.
+  - Test count: 14 → 26 (12 new tests cover dot precedence, AC
+    metric variants, footer formatting, section omission).
+
+### Refactored
+
+- **Shared `readPackageVersion()` helper** (`src/utils/packageInfo.ts`)
+  now used by both `cli.ts` (`--version` flag) and the new summary
+  footer. Eliminates the drift class that caused the v3.1.2 false
+  positive (CLI reported 3.1.0 while npm had installed 3.1.2).
+
+### Fixed
+
+- **Copilot CLI provider — `-p ""` collapsed by Windows cmd.exe.** 3.1.5
+  passed `-p ""` followed by `-s` to satisfy Copilot CLI's prompt flag
+  while delivering the actual prompt via stdin. On Windows with
+  `shell: true`, cmd.exe **strips the empty-string argument** before
+  invoking copilot, so the next flag (`-s`) was consumed as the value
+  of `-p`. Copilot then literally treated `-s` as the user prompt and
+  responded with `'I received "-s" but I'm not sure what you'd like
+  me to do…'` for every file. The fix is to **omit `-p` entirely** —
+  Copilot CLI 1.0.43+ reads the prompt from stdin when `-p` is absent
+  (per github/copilot-cli#1046). This is the only form that survives
+  cmd.exe quirks while still keeping the command line tiny enough to
+  fit Windows' 8,191-char limit and feeding the full prompt — however
+  large — through stdin. Tests updated to assert `-p` is no longer in
+  the args list at all.
+
 ## [3.1.5] — 2026-05-08
 
 ### Fixed

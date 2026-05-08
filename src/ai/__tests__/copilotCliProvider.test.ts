@@ -57,15 +57,18 @@ describe("CopilotCliProvider", () => {
     expect(lastSpawnArgs?.cmd).toBe("copilot");
     // Prompt must NOT appear in args — it goes via stdin so the command line
     // stays small enough to fit Windows' cmd.exe 8191-char limit even for
-    // multi-file PR diffs.
+    // multi-file PR diffs. `-p` is also omitted entirely: on Windows with
+    // shell:true, an empty-string `-p ""` arg gets stripped by cmd.exe and
+    // the next flag (`-s`) is consumed as the prompt — copilot parrots it
+    // back ('I received "-s"…'). Omitting -p makes copilot read stdin.
     expect(lastSpawnArgs?.args).toEqual([
-      "-p", "",
       "-s",
       "--allow-all-tools",
       "--no-color",
       "--model=gpt-4.1",
     ]);
     expect(lastSpawnArgs?.args).not.toContain("test prompt");
+    expect(lastSpawnArgs?.args).not.toContain("-p");
     // Prompt must arrive via stdin and stdin must be closed so copilot knows
     // the input is complete (otherwise it'd hang waiting for more bytes).
     expect(lastStdinWrites.join("")).toBe("test prompt");
@@ -91,9 +94,9 @@ describe("CopilotCliProvider", () => {
     const provider = new CopilotCliProvider("gpt-4.1");
     await provider.review(hugePrompt);
 
-    // The args slot reserved for the prompt is empty — nothing leaked onto the cmd line.
-    expect(lastSpawnArgs?.args[0]).toBe("-p");
-    expect(lastSpawnArgs?.args[1]).toBe("");
+    // No prompt — and no -p flag — anywhere on the command line.
+    expect(lastSpawnArgs?.args).not.toContain("-p");
+    expect(lastSpawnArgs?.args.some((a) => a.includes(hugePrompt))).toBe(false);
     // The full prompt arrived via stdin verbatim and stdin was closed.
     expect(lastStdinWrites.join("")).toBe(hugePrompt);
     expect(lastStdinEnded).toBe(true);

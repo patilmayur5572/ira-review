@@ -19,6 +19,7 @@ import { generateTestCases } from "./core/testGenerator.js";
 import { trackRequirementCompletion } from "./core/requirementTracker.js";
 import { detectFramework } from "./frameworks/detector.js";
 import { resolveGitRoot } from "./utils/gitRoot.js";
+import { readPackageVersion } from "./utils/packageInfo.js";
 import { runPreflight, formatPreflight, detectScmFromGit, detectAiProvider } from "./utils/preflight.js";
 import type { TestFramework } from "./types/jira.js";
 
@@ -108,28 +109,10 @@ function logEnvironmentInfo(config: { ai: { provider: string; model?: string; ba
 
 // ─── Program ────────────────────────────────────────────────
 
-/**
- * Read the package version from the bundled package.json at runtime so the
- * CLI's `--version` output cannot drift from the published npm version.
- *
- * Hard-coding the version literal here previously caused a Jenkins false
- * positive: ira-review 3.1.2 was installed correctly, but `--version`
- * returned "3.1.0" (the stale literal), tripping the pipeline's version
- * assertion. Reading from package.json keeps the two in lockstep.
- */
-function readPackageVersion(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    // Bundled CLI lives at <pkg>/dist/cli.js; package.json is one level up.
-    // When running from source via tsx, src/cli.ts is also one level under <pkg>.
-    const pkgPath = resolve(here, "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
-    if (pkg.version) return pkg.version;
-  } catch {
-    // fall through to unknown
-  }
-  return "unknown";
-}
+// Version is read from package.json at runtime via readPackageVersion()
+// (../utils/packageInfo). Hard-coding the literal here previously caused a
+// Jenkins false positive: 3.1.2 was installed but --version returned "3.1.0".
+// The shared util keeps the CLI flag and the v3.1.6 summary footer in lockstep.
 
 const program = new Command();
 

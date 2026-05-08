@@ -40,7 +40,6 @@ npx ira-review review --pr 42 --dry-run
 - AI-powered code review with inline PR comments
 - Risk scoring (0-100) with auto-labeling on GitHub
 - JIRA acceptance criteria validation with per-criterion pass/fail
-- "All Clear" PR summary block — celebratory ✅ banner when zero issues are found and JIRA AC coverage is 100%, with an explicit "human reviewer approval is still required before merge" reminder. Suppressed automatically when an AC gap exists.
 - Test Generation from JIRA — generate test cases from JIRA acceptance criteria in 8 frameworks
 - SonarQube issue enrichment with AI explanations
 - Slack and Teams notifications with risk threshold filtering

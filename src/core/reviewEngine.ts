@@ -24,6 +24,7 @@ import { trackRequirementCompletion } from "./requirementTracker.js";
 import { buildSummary } from "./summaryBuilder.js";
 import { Notifier } from "../integrations/notifier.js";
 import { resolveGitRoot } from "../utils/gitRoot.js";
+import { readPackageVersion } from "../utils/packageInfo.js";
 import { generateAcceptanceCriteria, formatACsForJiraComment } from "./acGenerator.js";
 
 const AI_CONCURRENCY = 3;
@@ -433,6 +434,13 @@ export class ReviewEngine {
       );
     }
 
+    // Files actually inspected by IRA. In sonar mode the AI is fed only the
+    // files Sonar found issues in (grouped); in standalone mode the AI sees
+    // every changed file in the diff. Used by the v3.1.6 summary header so a
+    // clean PR can still report "5 files reviewed · 0 findings" instead of
+    // leaving reviewers unsure whether IRA looked at anything.
+    const filesReviewed = reviewMode === "sonar" ? grouped.length : diffByFile.size;
+
     const result: ReviewResult = {
       pullRequestId,
       framework,
@@ -448,10 +456,15 @@ export class ReviewEngine {
       requirementCompletion,
       acGeneration,
       warnings,
+      filesReviewed,
     };
 
     // 11. Post summary + comments
-    const summary = buildSummary(result);
+    const summary = buildSummary(result, {
+      version: readPackageVersion(),
+      aiProvider: this.config.ai.provider,
+      aiModel: this.config.ai.model,
+    });
 
     if (this.config.dryRun) {
       console.log(summary);

@@ -137,10 +137,6 @@ This is the feature that catches "does this actually match the ticket?" before a
 
 When a JIRA ticket has **no acceptance criteria at all**, IRA generates suggested ACs from the diff and (by default) posts them as a comment on the JIRA ticket for the Product Owner to review and refine. If your CI environment cannot or should not write back to JIRA — for example, the JIRA service account is read-only, or org policy forbids automated JIRA writes — pass `--no-post-acs-to-jira` (or set `IRA_POST_ACS_TO_JIRA=false`). The suggestions still render in the PR summary under **📝 Suggested Acceptance Criteria**, so reviewers see them either way; only the JIRA write is suppressed.
 
-### "All Clear" PR Summary
-
-When IRA finishes a review with **zero issues** found and **JIRA acceptance criteria are 100% covered** (or the ticket needs no ACs), the PR summary leads with a celebratory ✅ banner: a confident, specific signal that automated review passed, alongside an explicit reminder that **human reviewer approval is still required before merge**. The banner is suppressed when an AC gap exists so the summary never reads "safe to approve" while a requirements gap is still visible — IRA augments your code review process, it doesn't replace it.
-
 ### Inline AI Comments
 
 Each issue is posted as an inline comment on the exact line in the PR, containing:

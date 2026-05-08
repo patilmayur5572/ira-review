@@ -407,11 +407,14 @@ export class CopilotCliProvider implements AIProvider {
       // Pipe the prompt via stdin instead of `-p <prompt>` so we don't hit
       // Windows' 8191-character cmd.exe command-line limit when the PR diff
       // is large (observed: every file in a 5-file React PR failing with
-      // "The command line is too long."). Copilot CLI 1.0.43+ reads from
-      // stdin when -p is empty (see github/copilot-cli#1046). Args stay tiny
-      // and constant; the prompt body — however large — flows through stdin.
+      // "The command line is too long."). Copilot CLI 1.0.43+ reads the
+      // prompt from stdin when `-p` is omitted entirely (see
+      // github/copilot-cli#1046). We deliberately do NOT pass `-p ""` here:
+      // on Windows with `shell:true`, cmd.exe strips the empty-string arg,
+      // which causes copilot to consume the very next flag (`-s`) as the
+      // value of `-p` and parrot it back ('I received "-s"…'). Omitting -p
+      // entirely is the only form that works cross-shell + cross-platform.
       const args = [
-        "-p", "",              // empty -p triggers stdin read on copilot CLI 1.x
         "-s",                  // silent — only the response, no stats lines
         "--allow-all-tools",   // required for non-interactive mode (copilot v0.0.367+)
         "--no-color",          // strip ANSI just in case the silent flag misses something

@@ -1,115 +1,64 @@
-import type { ReviewResult } from "../types/review.js";
+import type { ReviewResult, SummaryMeta } from "../types/review.js";
 
-export function buildSummary(result: ReviewResult): string {
+/**
+ * v3.1.6 PR summary — professional, scannable engineering report.
+ *
+ * Replaces the v3.1.5 "AI-slop" output (multi-line celebration block,
+ * conversational greetings, redundant risk badges) with a single load-bearing
+ * status line, one metrics row, and structured sections.
+ *
+ * Status dot precedence (worst signal wins across risk + AC gap):
+ *   🔴  CRITICAL risk OR any BLOCKER finding
+ *   🟠  HIGH risk
+ *   🟡  MEDIUM risk OR an AC gap (incomplete coverage / failed validation)
+ *   🟢  otherwise (LOW risk, no findings, no AC gap)
+ *
+ * The dot is computed once and reused everywhere — there is no separate
+ * "All Clear" badge, no risk emoji on its own line, no "Safe to approve"
+ * conversational block. A clean PR is signalled by 🟢 + "0 findings" + the
+ * absence of follow-up sections.
+ */
+export function buildSummary(result: ReviewResult, meta: SummaryMeta = {}): string {
   const lines: string[] = [];
 
-  lines.push("# 🔍 IRA Review Summary");
+  const dot = computeStatusDot(result);
+  const riskLevel = result.risk?.level ?? "LOW";
+  const riskScore = result.risk?.score ?? 0;
+  const riskMax = result.risk?.maxScore ?? 100;
+
+  // ── Headline ────────────────────────────────────────────────────────────
+  lines.push(`### ${dot} IRA Review · ${riskLevel} risk (${riskScore}/${riskMax})`);
   lines.push("");
 
-  // Risk score
-  if (result.risk) {
-    const emoji =
-      result.risk.level === "CRITICAL"
-        ? "🔴"
-        : result.risk.level === "HIGH"
-          ? "🟠"
-          : result.risk.level === "MEDIUM"
-            ? "🟡"
-            : "🟢";
-
-    lines.push(
-      `## ${emoji} Risk: ${result.risk.level} (${result.risk.score}/${result.risk.maxScore})`,
-    );
-    lines.push("");
-
-    // Only show detailed factor table in Sonar mode — factors are Sonar-driven
-    if (result.reviewMode === "sonar") {
-      lines.push("| Factor | Score | Detail |");
-      lines.push("|---|---|---|");
-      for (const f of result.risk.factors) {
-        lines.push(`| ${f.name} | ${f.score}/${f.maxScore} | ${f.detail} |`);
-      }
-      lines.push("");
-    }
+  // ── Metrics line ────────────────────────────────────────────────────────
+  // Single line, "·"-separated. Always shows files + findings; appends AC
+  // coverage when a JIRA ticket is configured.
+  const metrics: string[] = [];
+  if (typeof result.filesReviewed === "number") {
+    metrics.push(`${result.filesReviewed} file${result.filesReviewed === 1 ? "" : "s"} reviewed`);
   }
-
-  // All-clear celebration — only when:
-  //   • zero findings made it through filtering, AND
-  //   • no JIRA AC gap exists (incomplete coverage or failed AC validation
-  //     should NEVER read "safe to approve"; the requirements section below
-  //     will surface the gap visibly instead).
-  // Goal: give reviewers a confident, specific signal that automated review
-  // passed, while making it obvious that human approval is still required.
-  const acGapExists =
-    (result.requirementCompletion && result.requirementCompletion.completionPercentage < 100) ||
-    (result.acceptanceValidation && !result.acceptanceValidation.overallPass);
-  if (result.comments.length === 0 && !acGapExists) {
-    const fw = result.framework ?? "your stack";
-    // AC line — mutually exclusive cases:
-    //   • requirementCompletion: ticket HAD ACs and they were validated for coverage %
-    //   • acceptanceValidation:  ticket HAD ACs (legacy path, no coverage %)
-    //   • acGeneration:          ticket had NO ACs, IRA generated suggestions and posted to JIRA
-    //   • all null:              no JIRA ticket configured, or JIRA call soft-failed → omit the line
-    const acLine = result.requirementCompletion
-      ? `Acceptance criteria for **${result.requirementCompletion.jiraKey}**: **${result.requirementCompletion.completionPercentage}% covered** (${result.requirementCompletion.metCriteria}/${result.requirementCompletion.totalCriteria}).`
-      : result.acceptanceValidation
-        ? `Acceptance criteria for **${result.acceptanceValidation.jiraKey}**: ${result.acceptanceValidation.overallPass ? "**all met** ✅" : "**partially met** — see the JIRA section above"}.`
-        : result.acGeneration && result.acGeneration.criteria.length > 0
-          ? (result.acGeneration.postedToJira
-              ? `📝 No acceptance criteria found on **${result.acGeneration.jiraKey}** — IRA generated **${result.acGeneration.totalCriteria} suggested AC${result.acGeneration.totalCriteria === 1 ? "" : "s"}** and posted them as a comment on the JIRA ticket for the Product Owner / requirement author to review and refine.`
-              : `📝 No acceptance criteria found on **${result.acGeneration.jiraKey}** — IRA generated **${result.acGeneration.totalCriteria} suggested AC${result.acGeneration.totalCriteria === 1 ? "" : "s"}** (see the Suggested Acceptance Criteria section below).`)
-          : null;
-
-    lines.push("## ✅ All Clear — No Issues Found");
-    lines.push("");
-    lines.push(`> 🎉 **Nice work on PR #${result.pullRequestId}!**`);
-    lines.push(`>`);
-    lines.push(`> IRA scanned every changed file across **${fw}** and didn't surface a single concern.`);
-    if (acLine) {
-      lines.push(`>`);
-      lines.push(`> ${acLine}`);
-    }
-    if (result.risk) {
-      lines.push(`>`);
-      lines.push(`> Risk score: **${result.risk.score}/${result.risk.maxScore}** (${result.risk.level}).`);
-    }
-    lines.push(`>`);
-    lines.push(`> ✅ **Safe to approve from an automated-review standpoint.**`);
-    lines.push(`>`);
-    lines.push(`> 👥 **Human reviewer approval is still required before merge.** IRA augments your code review process — it doesn't replace it. Please ensure your team's review and approval requirements have been met before merging.`);
-    lines.push("");
-  }
-
-  // Overview
-  lines.push("## Overview");
-  lines.push("");
-  lines.push(`| Metric | Value |`);
-  lines.push(`|---|---|`);
-  lines.push(`| Review mode | ${result.reviewMode === "standalone" ? "AI-only" : "Sonar + AI"} |`);
-  lines.push(`| Total issues | ${result.totalIssues} |`);
-  lines.push(`| Reviewed (AI) | ${result.reviewedIssues} |`);
-  lines.push(
-    `| Framework | ${result.framework ?? "not detected"} |`,
-  );
+  metrics.push(`${result.comments.length} finding${result.comments.length === 1 ? "" : "s"}`);
+  const acMetric = formatAcMetric(result);
+  if (acMetric) metrics.push(acMetric);
+  lines.push(metrics.join(" · "));
   lines.push("");
 
-  // Complexity
-  if (result.complexity && result.complexity.hotspots.length > 0) {
-    lines.push("## 🧠 Complexity Hotspots");
+  // ── Findings ────────────────────────────────────────────────────────────
+  if (result.comments.length > 0) {
+    lines.push("## Findings");
     lines.push("");
-    lines.push("| File | Complexity | Cognitive |");
-    lines.push("|---|---|---|");
-    for (const h of result.complexity.hotspots.slice(0, 5)) {
-      lines.push(`| ${h.filePath} | ${h.complexity} | ${h.cognitiveComplexity} |`);
+    lines.push("| File | Line | Rule | Severity |");
+    lines.push("|---|---|---|---|");
+    for (const c of result.comments) {
+      lines.push(`| ${c.filePath} | ${c.line} | \`${c.rule}\` | ${c.severity} |`);
     }
     lines.push("");
   }
 
-  // Requirement completion
+  // ── Acceptance Criteria coverage ────────────────────────────────────────
   if (result.requirementCompletion) {
     const rc = result.requirementCompletion;
-    const pctIcon = rc.completionPercentage === 100 ? "✅" : rc.completionPercentage >= 50 ? "🟡" : "🔴";
-    lines.push(`## ${pctIcon} Requirements: ${rc.jiraKey} - ${rc.completionPercentage}% Complete (${rc.metCriteria}/${rc.totalCriteria})`);
+    lines.push(`## Acceptance Criteria — ${rc.jiraKey} (${rc.completionPercentage}% covered, ${rc.metCriteria}/${rc.totalCriteria})`);
     lines.push("");
     for (const r of rc.requirements) {
       const icon = r.coverage === "full" ? "✅" : r.coverage === "partial" ? "🟡" : "❌";
@@ -120,21 +69,23 @@ export function buildSummary(result: ReviewResult): string {
     }
     if (rc.edgeCases.length > 0) {
       lines.push("");
-      lines.push("### ⚠️ Edge Cases Not Covered");
+      lines.push("### Edge cases not covered");
       for (const e of rc.edgeCases) {
         lines.push(`- ${e}`);
       }
     }
     if (rc.parseWarning) {
       lines.push("");
-      lines.push(`> ⚠️ **Warning:** ${rc.parseWarning}`);
+      lines.push(`> ⚠️ ${rc.parseWarning}`);
     }
     lines.push("");
   } else if (result.acceptanceValidation) {
-    // Fallback to simple AC validation if requirement tracking not available
+    // Fallback: legacy AC validation path (no coverage %).
     const av = result.acceptanceValidation;
-    const icon = av.overallPass ? "✅" : "❌";
-    lines.push(`## ${icon} JIRA: ${av.jiraKey} - ${av.summary}`);
+    const status = av.overallPass ? "all met" : "gaps found";
+    lines.push(`## Acceptance Criteria — ${av.jiraKey} (${status})`);
+    lines.push("");
+    lines.push(`_${av.summary}_`);
     lines.push("");
     for (const c of av.criteria) {
       lines.push(`- ${c.met ? "✅" : "❌"} ${c.description}`);
@@ -142,23 +93,50 @@ export function buildSummary(result: ReviewResult): string {
     lines.push("");
   }
 
-  // Generated acceptance criteria (when ticket had no ACs)
+  // ── Risk factor breakdown (Sonar mode only) ─────────────────────────────
+  if (result.risk && result.reviewMode === "sonar" && result.risk.factors.length > 0) {
+    lines.push("## Risk Factors");
+    lines.push("");
+    lines.push("| Factor | Score | Detail |");
+    lines.push("|---|---|---|");
+    for (const f of result.risk.factors) {
+      lines.push(`| ${f.name} | ${f.score}/${f.maxScore} | ${f.detail} |`);
+    }
+    lines.push("");
+  }
+
+  // ── Complexity hotspots ─────────────────────────────────────────────────
+  if (result.complexity && result.complexity.hotspots.length > 0) {
+    lines.push("## Complexity Hotspots");
+    lines.push("");
+    lines.push("| File | Complexity | Cognitive |");
+    lines.push("|---|---|---|");
+    for (const h of result.complexity.hotspots.slice(0, 5)) {
+      lines.push(`| ${h.filePath} | ${h.complexity} | ${h.cognitiveComplexity} |`);
+    }
+    lines.push("");
+  }
+
+  // ── Suggested ACs (ticket had none) ─────────────────────────────────────
   if (result.acGeneration && result.acGeneration.criteria.length > 0) {
     const ag = result.acGeneration;
-    lines.push(`## 📝 Suggested Acceptance Criteria (${ag.totalCriteria} generated)`);
+    lines.push(`## Suggested Acceptance Criteria — ${ag.jiraKey} (${ag.totalCriteria} generated)`);
     lines.push("");
-    lines.push(`> No acceptance criteria found in ${ag.jiraKey}. IRA inferred the following from: ${ag.sources.join(", ")}.`);
+    const postedNote = ag.postedToJira
+      ? `Posted to JIRA as a comment for the Product Owner to review.`
+      : `Not posted to JIRA (suggestions stay in this summary only).`;
+    lines.push(`> No acceptance criteria found on **${ag.jiraKey}**. IRA inferred the following from: ${ag.sources.join(", ")}. ${postedNote}`);
     lines.push("");
     for (const ac of ag.criteria) {
-      lines.push(`**${ac.id}:**`);
+      lines.push(`**${ac.id}**`);
       lines.push(`- **Given** ${ac.given}`);
       lines.push(`- **When** ${ac.when}`);
       lines.push(`- **Then** ${ac.then}`);
       lines.push("");
     }
     if (ag.reviewHints && ag.reviewHints.length > 0) {
-      lines.push(`### ❓ Questions for PO`);
-      lines.push(`> IRA could not determine the following from the code. Answering these will strengthen the ACs above:`);
+      lines.push(`### Questions for PO`);
+      lines.push(`> IRA could not determine the following from the code. Answering these will strengthen the ACs above.`);
       lines.push("");
       for (const hint of ag.reviewHints) {
         lines.push(`- ${hint}`);
@@ -166,20 +144,20 @@ export function buildSummary(result: ReviewResult): string {
       lines.push("");
     }
     if (ag.parseWarning) {
-      lines.push(`> ⚠️ **Warning:** ${ag.parseWarning}`);
+      lines.push(`> ⚠️ ${ag.parseWarning}`);
       lines.push("");
     }
   }
 
-  // Generated test cases
+  // ── Generated test cases ────────────────────────────────────────────────
   if (result.testGeneration && result.testGeneration.testCases.length > 0) {
     const tg = result.testGeneration;
-    const notTestableCount = tg.testCases.filter(tc => tc.type === "not-testable").length;
+    const notTestableCount = tg.testCases.filter((tc) => tc.type === "not-testable").length;
     const testableCount = tg.totalCases - notTestableCount;
     const headerParts = [`${testableCount} test${testableCount !== 1 ? "s" : ""}`];
     if (tg.edgeCases > 0) headerParts.push(`${tg.edgeCases} advanced cases`);
     if (notTestableCount > 0) headerParts.push(`${notTestableCount} not-testable`);
-    lines.push(`## 🧪 Generated Test Cases (${headerParts.join(", ")})`);
+    lines.push(`## Generated Test Cases (${headerParts.join(", ")})`);
     lines.push("");
     const byCriterion = new Map<string, typeof tg.testCases>();
     for (const tc of tg.testCases) {
@@ -202,26 +180,85 @@ export function buildSummary(result: ReviewResult): string {
     }
   }
   if (result.testGeneration?.parseWarning) {
-    lines.push(`> ⚠️ **Warning:** ${result.testGeneration.parseWarning}`);
+    lines.push(`> ⚠️ ${result.testGeneration.parseWarning}`);
     lines.push("");
   }
 
-  // Issue breakdown
-  if (result.comments.length > 0) {
-    lines.push("## Issues Reviewed");
-    lines.push("");
-    lines.push("| File | Line | Rule | Severity |");
-    lines.push("|---|---|---|---|");
-    for (const c of result.comments) {
-      lines.push(
-        `| ${c.filePath} | ${c.line} | \`${c.rule}\` | ${c.severity} |`,
-      );
-    }
-    lines.push("");
-  }
-
+  // ── Footer ──────────────────────────────────────────────────────────────
+  // Single italicised line. Mirrors `npm pkg --version · provider/model`.
+  // Human approval reminder retained (compliance) but trimmed to one line.
   lines.push("---");
-  lines.push("*Generated by [ira-review](https://www.npmjs.com/package/ira-review)*");
+  lines.push(`_${formatFooter(meta)}_`);
+  lines.push("");
+  lines.push("_Human reviewer approval is still required before merge. IRA augments code review; it does not replace it._");
 
   return lines.join("\n");
+}
+
+/**
+ * Compute the single load-bearing status dot used in the headline.
+ * Worst signal across risk-level and AC-gap wins. Findings of severity
+ * BLOCKER also escalate to 🔴 even if the calculated risk score lands in a
+ * lower bucket (defensive: a missed BLOCKER should never be hidden behind
+ * a green dot just because the risk model weighted it down).
+ */
+function computeStatusDot(result: ReviewResult): string {
+  const riskRank = riskRankFor(result.risk?.level ?? "LOW");
+  const acRank = acGapRank(result);
+  const blockerRank = result.comments.some((c) => c.severity === "BLOCKER") ? 3 : 0;
+  const worst = Math.max(riskRank, acRank, blockerRank);
+  return ["🟢", "🟡", "🟠", "🔴"][worst] ?? "🟢";
+}
+
+function riskRankFor(level: string): 0 | 1 | 2 | 3 {
+  switch (level) {
+    case "CRITICAL": return 3;
+    case "HIGH":     return 2;
+    case "MEDIUM":   return 1;
+    default:         return 0;
+  }
+}
+
+/**
+ * Rank for the AC gap signal — 0 = no gap, 1 = gap (elevates dot to at
+ * least 🟡). We deliberately do NOT push beyond 🟡 here; an AC gap is a
+ * "review needed" signal, not a "blocking" one. Risk + BLOCKER findings
+ * remain the only paths to 🟠/🔴.
+ */
+function acGapRank(result: ReviewResult): 0 | 1 {
+  if (result.requirementCompletion && result.requirementCompletion.completionPercentage < 100) return 1;
+  if (result.acceptanceValidation && !result.acceptanceValidation.overallPass) return 1;
+  return 0;
+}
+
+/**
+ * Build the AC fragment of the metrics line. Mutually exclusive cases:
+ *   • requirementCompletion → "CBBT-86165: 3/5 ACs met"
+ *   • acceptanceValidation  → "CBBT-86165: ACs met" / "CBBT-86165: AC gaps"
+ *   • acGeneration          → "CBBT-86165: 4 ACs suggested"
+ *   • none                  → null (omit segment)
+ */
+function formatAcMetric(result: ReviewResult): string | null {
+  if (result.requirementCompletion) {
+    const rc = result.requirementCompletion;
+    return `${rc.jiraKey}: ${rc.metCriteria}/${rc.totalCriteria} ACs met`;
+  }
+  if (result.acceptanceValidation) {
+    const av = result.acceptanceValidation;
+    return `${av.jiraKey}: ${av.overallPass ? "ACs met" : "AC gaps"}`;
+  }
+  if (result.acGeneration && result.acGeneration.criteria.length > 0) {
+    const ag = result.acGeneration;
+    return `${ag.jiraKey}: ${ag.totalCriteria} AC${ag.totalCriteria === 1 ? "" : "s"} suggested`;
+  }
+  return null;
+}
+
+function formatFooter(meta: SummaryMeta): string {
+  const parts: string[] = [];
+  parts.push(`ira-review${meta.version ? ` ${meta.version}` : ""}`);
+  if (meta.aiProvider || meta.aiModel) {
+    parts.push([meta.aiProvider, meta.aiModel].filter(Boolean).join("/"));
+  }
+  return parts.join(" · ");
 }
