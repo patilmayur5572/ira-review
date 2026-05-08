@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import picomatch from "picomatch";
 
 export interface IraRule {
   id?: string;
@@ -189,27 +190,18 @@ export function filterRulesByPath(rules: IraRule[], filePath: string): IraRule[]
   });
 }
 
+// Cache compiled matchers so picomatch only parses each pattern once.
+const matcherCache = new Map<string, (path: string) => boolean>();
+
 function matchPattern(pattern: string, filePath: string): boolean {
-  // Handle **/*.ext patterns (match any file ending with .ext)
-  if (pattern.startsWith('**/')) {
-    const suffix = pattern.slice(3); // e.g. "*.test.ts"
-    if (suffix.startsWith('*')) {
-      // **/*.test.ts -> match files ending with .test.ts
-      const ext = suffix.slice(1); // ".test.ts"
-      return filePath.endsWith(ext);
-    }
-    // **/foo -> match any path ending with /foo or equal to foo
-    return filePath.endsWith('/' + suffix) || filePath === suffix;
+  let isMatch = matcherCache.get(pattern);
+  if (!isMatch) {
+    // dot:true so dotfiles (.ira-rules.json, etc.) match like real files
+    // would in fast-glob / minimatch / VS Code search.
+    isMatch = picomatch(pattern, { dot: true });
+    matcherCache.set(pattern, isMatch);
   }
-
-  // Handle prefix/** patterns (match any file starting with prefix/)
-  if (pattern.endsWith('/**')) {
-    const prefix = pattern.slice(0, -3); // e.g. "src/api"
-    return filePath.startsWith(prefix + '/') || filePath === prefix;
-  }
-
-  // Exact match
-  return filePath === pattern;
+  return isMatch(filePath);
 }
 
 export function loadSensitiveAreas(cwd?: string): SensitiveArea[] {

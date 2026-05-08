@@ -3,6 +3,58 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.9] — 2026-05-09
+
+### Fixed — ROOT CAUSE: glob matcher silently dropped most team rules
+
+This is the real bug that v3.1.7 / v3.1.8 prompt patches were trying to
+work around.
+
+`src/utils/rulesFile.ts` shipped a hand-rolled `matchPattern` that only
+recognised three glob shapes:
+
+1. `**/foo.ext`
+2. `prefix/**`
+3. exact string match
+
+Any rule whose `paths` glob fell outside those shapes — for example
+`api/**/*.ts`, `api/server/api/trpc/procedures/**/allowedRoles.ts`,
+`ui/**/*.test.*`, `ui/**/*.tsx`, `ui/src/api/hooks/queries/**/*.ts` —
+silently failed to match **any file** and was dropped by
+`filterRulesByPath` before ever reaching the AI prompt. So a team could
+have a `proper-logging-levels` rule pinned to `api/**/*.ts` with a
+matching `bad: console.log('start procedure');` snippet and still see
+`Issues found: 0` on a PR that adds `console.log` to a tRPC handler.
+
+**Fix**: replaced the hand-rolled matcher with [`picomatch`](https://www.npmjs.com/package/picomatch)
+(the same engine used by fast-glob, chokidar, and most JS tooling).
+All standard glob features now work in `paths`:
+
+- `**/*.ts`, `**/*.{ts,tsx}`
+- `api/**/*.ts`, `api/server/**/procedures/**`
+- `ui/src/api/hooks/queries/**/*.ts`
+- negation, brace expansion, character classes — anything picomatch
+  supports
+
+Compiled matchers are cached per pattern, so the change is also faster
+than the old branching code on repeat lookups.
+
+**Verified**: in a real bankerdash `.ira-rules.json` with 100 rules, the
+`proper-logging-levels` rule (paths `api/**/*.ts`) now correctly
+matches `api/server/api/trpc/procedures/healthCheck/healthCheck.ts`.
+Before this fix it matched **no file**.
+
+### Also rolled in (prompt cleanups)
+
+- Removed the JavaScript-specific `console.log in non-production code paths`
+  clause from Section 1's `Do NOT report:` list. The checklist now treats
+  committed debug-output statements the same way across all languages —
+  left to team policy via `.ira-rules.json`. No language-specific
+  exceptions remain in Section 1.
+- Broadened the framework-auto-escaping silencer to name Vue interpolation,
+  Django/Jinja autoescape, and Razor encoding alongside React JSX and
+  Angular bindings, so the silencer is no longer a JS/TS bias either.
+
 ## [3.1.8] — 2026-05-09
 
 ### Fixed

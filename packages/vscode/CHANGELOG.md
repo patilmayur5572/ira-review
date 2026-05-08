@@ -2,6 +2,12 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.1.9] — 2026-05-09
+
+### Underlying CLI
+
+- Bundles [`ira-review`](https://www.npmjs.com/package/ira-review) **3.1.9** which fixes the **root cause** of "team rules not enforced". The old hand-rolled glob matcher in `src/utils/rulesFile.ts` only handled three patterns (`**/foo.ext`, `prefix/**`, exact match) and silently dropped rules using mid-glob patterns like `api/**/*.ts`, `ui/**/*.test.*`, or `ui/src/api/hooks/queries/**/*.ts`. Replaced with [picomatch](https://www.npmjs.com/package/picomatch) so all standard globs work. Also rolled in the JS-specific `console.log` silencer removal and the framework-auto-escape broadening (Vue/Django/Razor). See the [ira-review CHANGELOG](https://github.com/patilmayur5572/ira-review/blob/main/CHANGELOG.md#319--2026-05-09) for full details.
+
 ## [3.1.8] — 2026-05-09
 
 ### Version alignment
