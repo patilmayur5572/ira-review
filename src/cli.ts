@@ -5,9 +5,10 @@
  */
 
 import { Command } from "commander";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { resolve, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { ReviewEngine } from "./core/reviewEngine.js";
 import { resolveConfigFromEnv } from "./utils/env.js";
@@ -107,12 +108,35 @@ function logEnvironmentInfo(config: { ai: { provider: string; model?: string; ba
 
 // ─── Program ────────────────────────────────────────────────
 
+/**
+ * Read the package version from the bundled package.json at runtime so the
+ * CLI's `--version` output cannot drift from the published npm version.
+ *
+ * Hard-coding the version literal here previously caused a Jenkins false
+ * positive: ira-review 3.1.2 was installed correctly, but `--version`
+ * returned "3.1.0" (the stale literal), tripping the pipeline's version
+ * assertion. Reading from package.json keeps the two in lockstep.
+ */
+function readPackageVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // Bundled CLI lives at <pkg>/dist/cli.js; package.json is one level up.
+    // When running from source via tsx, src/cli.ts is also one level under <pkg>.
+    const pkgPath = resolve(here, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
+    if (pkg.version) return pkg.version;
+  } catch {
+    // fall through to unknown
+  }
+  return "unknown";
+}
+
 const program = new Command();
 
 program
   .name("ira-review")
   .description("AI-powered PR review tool with SonarQube + GitHub/Bitbucket integration")
-  .version("3.1.0");
+  .version(readPackageVersion());
 
 program
   .command("review")

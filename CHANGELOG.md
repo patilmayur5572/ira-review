@@ -3,6 +3,12 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.3] — 2026-05-08
+
+### Fixed
+
+- **`ira-review --version` now reads from `package.json` at runtime** instead of a hard-coded literal in `src/cli.ts`. The literal had drifted from the published npm version — both 3.1.1 and 3.1.2 self-reported as `"3.1.0"`, causing strict CI version assertions (e.g. Jenkins pipelines that compare `ira-review --version` against the pinned `IRA_VERSION`) to fail even when the correct binary was installed and running. Version is now resolved once at startup via `import.meta.url` → `<pkg>/package.json`, so the CLI's self-reported version can never drift from the published npm version again. No behavioural changes; functionally identical to 3.1.2.
+
 ## [3.1.2] — 2026-05-08
 
 ### Added
