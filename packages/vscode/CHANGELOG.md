@@ -2,6 +2,15 @@
 
 All notable changes to the IRA VS Code extension will be documented in this file.
 
+## [3.1.10] — 2026-05-12
+
+### Underlying CLI
+
+- Bundles [`ira-review`](https://www.npmjs.com/package/ira-review) **3.1.10**, which contains two CI-focused fixes:
+  - **Bitbucket build status is now always `SUCCESSFUL`** under the `ira-risk` key. IRA is advisory only and previously mapped MEDIUM risk → `INPROGRESS` (which left the build status "stuck" forever and blocked merges) and HIGH/CRITICAL → `FAILED` (which outright blocked merges). The actual risk level is still visible in the build-status `name` (e.g. `IRA Risk: HIGH (72/100)`) and in the PR summary comment, so reviewers see the assessment — it just no longer gates the merge.
+  - **Amp CLI provider works on Windows.** `AmpCliProvider` previously did `spawn("amp", ...)` unconditionally, which fails with EINVAL on Windows when the only `amp` on PATH is the npm-created `.cmd` shim. A new `resolveAmpCommand()` helper now resolves the `@sourcegraph/amp` JS entrypoint and invokes it via `node <entry>` on Windows, with an `AMP_CLI_PATH` env-var override and shell-fallback as final safety nets.
+- See the [ira-review CHANGELOG](https://github.com/patilmayur5572/ira-review/blob/main/CHANGELOG.md#3110--2026-05-11) for full details.
+
 ## [3.1.9] — 2026-05-09
 
 ### Underlying CLI

@@ -93,7 +93,7 @@ const REVIEW_CHECKLIST = `
 - Injection — unsanitized input in SQL, HTML, URLs, shell commands, eval(), or template literals
 - Sensitive data exposure — tokens, PII, or secrets in logs, error messages, client bundles, or URLs
 - Auth gaps — missing permission checks, insecure token storage, credentials in source
-- Do NOT report: parameterized/prepared SQL queries, React JSX expressions (auto-escaped), Angular template bindings (auto-sanitized), environment variables read at startup, console.log in non-production code paths
+- Do NOT report: parameterized/prepared SQL queries, framework-auto-escaped template expressions (React JSX, Angular bindings, Vue interpolation, Django/Jinja autoescape, Razor encoding), environment variables read at startup
 
 ### 2. Business Logic  [category: business-logic]
 - Off-by-one errors in loops, pagination, slicing, or index math

@@ -457,9 +457,9 @@ export class BitbucketServerClient implements SCMProvider {
     const sha = pr.fromRef?.latestCommit;
     if (!sha) return; // Soft-fail: nothing to attach the build status to.
 
-    const state = riskLevel === "CRITICAL" || riskLevel === "HIGH" ? "FAILED"
-      : riskLevel === "MEDIUM" ? "INPROGRESS"
-      : "SUCCESSFUL";
+    // IRA build status is advisory only — it must never block PR merges.
+    // Always report SUCCESSFUL; the actual risk level is conveyed in `name`.
+    const state = "SUCCESSFUL";
 
     const url = `${this.baseUrl}/rest/build-status/1.0/commits/${sha}`;
     await withRetry(async () => {

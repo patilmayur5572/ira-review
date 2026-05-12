@@ -319,9 +319,9 @@ export class BitbucketClient implements SCMProvider {
     riskScore: number,
   ): Promise<void> {
     const sha = await this.getSourceHash(pullRequestId);
-    const state = riskLevel === "CRITICAL" || riskLevel === "HIGH" ? "FAILED"
-      : riskLevel === "MEDIUM" ? "INPROGRESS"
-      : "SUCCESSFUL";
+    // IRA build status is advisory only — it must never block PR merges.
+    // Always report SUCCESSFUL; the actual risk level is conveyed in `name`.
+    const state = "SUCCESSFUL";
 
     const url = `${this.baseUrl}/repositories/${this.workspace}/${this.repoSlug}/commit/${sha}/statuses/build`;
 

@@ -3,6 +3,51 @@
 All notable changes to the `ira-review` CLI / SDK package are documented here.
 The VS Code extension changelog lives in `packages/vscode/CHANGELOG.md`.
 
+## [3.1.10] — 2026-05-11
+
+### Changed — Bitbucket build status is now always SUCCESSFUL (advisory)
+
+IRA is an advisory tool and must never block PR merges. Previously, the
+`ira-risk` Bitbucket build status was mapped from risk level:
+
+- `LOW` → `SUCCESSFUL`
+- `MEDIUM` → `INPROGRESS`  ← left the status "stuck" forever, blocked merges
+  on repos whose merge check requires all builds successful
+- `HIGH` / `CRITICAL` → `FAILED`  ← outright blocked the merge
+
+Both `src/scm/bitbucketServer.ts` and `src/scm/bitbucket.ts` now always
+post `state: "SUCCESSFUL"`. The actual risk level remains visible in the
+build-status `name` field (e.g. `IRA Risk: HIGH (72/100)`) and in the PR
+summary comment, so reviewers still see the assessment — it just no
+longer gates the merge.
+
+GitHub behaviour is unchanged (it uses informational labels, not commit
+statuses).
+
+### Fixed — Amp CLI provider on Windows (EINVAL on .cmd shim)
+
+`AmpCliProvider` previously did `spawn("amp", ...)` unconditionally. On
+Windows, when the only `amp` on PATH is the `amp.cmd` wrapper that npm
+creates for `@sourcegraph/amp`, Node's `spawn()` (without `shell: true`)
+fails with EINVAL — batch files cannot be executed without a shell.
+
+A new `resolveAmpCommand()` helper now picks the right invocation per
+platform:
+
+1. **`AMP_CLI_PATH` env var override** — absolute path to either a `.js`
+   entrypoint (invoked via `node <path>`) or a native binary like
+   `amp.exe` (invoked directly). Useful for CI environments that
+   pre-install Amp at a known path.
+2. **Non-Windows** — `spawn("amp", ...)` as before (the bin shim is a
+   real shell script with a shebang).
+3. **Windows** — locates the `@sourcegraph/amp` package's JS entrypoint
+   via Node's resolver and a walk up from `cwd`, then invokes it via
+   `node <entry>`.
+4. **Last resort on Windows** — `spawn("amp", ..., { shell: true })`.
+
+This unblocks running IRA's `--ai-provider amp` on Windows Jenkins
+agents that install Amp via npm.
+
 ## [3.1.9] — 2026-05-09
 
 ### Fixed — ROOT CAUSE: glob matcher silently dropped most team rules
@@ -39,7 +84,7 @@ All standard glob features now work in `paths`:
 Compiled matchers are cached per pattern, so the change is also faster
 than the old branching code on repeat lookups.
 
-**Verified**: in a real bankerdash `.ira-rules.json` with 100 rules, the
+**Verified**: in a real production `.ira-rules.json` with 100 rules, the
 `proper-logging-levels` rule (paths `api/**/*.ts`) now correctly
 matches `api/server/api/trpc/procedures/healthCheck/healthCheck.ts`.
 Before this fix it matched **no file**.

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAIProvider, parseAIResponse, AmpCliProvider, isAmpCliAvailable } from "../aiClient.js";
+import { createAIProvider, parseAIResponse, AmpCliProvider, isAmpCliAvailable, resolveAmpCommand } from "../aiClient.js";
 import type { AIConfig } from "../../types/config.js";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 vi.mock("openai", () => {
   return {
@@ -266,5 +269,71 @@ describe("createAIProvider - unsupported provider", () => {
         apiKey: "key",
       }),
     ).toThrow("Unsupported AI provider: unsupported");
+  });
+});
+
+describe("resolveAmpCommand", () => {
+  let tmp: string;
+  let originalEnv: string | undefined;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "amp-resolve-"));
+    originalEnv = process.env.AMP_CLI_PATH;
+  });
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.AMP_CLI_PATH;
+    } else {
+      process.env.AMP_CLI_PATH = originalEnv;
+    }
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("uses AMP_CLI_PATH override when it points to a .js entrypoint (spawned via node)", () => {
+    const jsEntry = join(tmp, "amp.js");
+    writeFileSync(jsEntry, "// fake amp entrypoint");
+    process.env.AMP_CLI_PATH = jsEntry;
+
+    const result = resolveAmpCommand(["--execute", "--mode", "smart"]);
+    expect(result.command).toBe(process.execPath);
+    expect(result.args).toEqual([jsEntry, "--execute", "--mode", "smart"]);
+    expect(result.useShell).toBe(false);
+  });
+
+  it("uses AMP_CLI_PATH override directly when it points to a non-.js binary", () => {
+    const binEntry = join(tmp, process.platform === "win32" ? "amp.exe" : "amp");
+    writeFileSync(binEntry, "");
+    process.env.AMP_CLI_PATH = binEntry;
+
+    const result = resolveAmpCommand(["--version"]);
+    expect(result.command).toBe(binEntry);
+    expect(result.args).toEqual(["--version"]);
+    expect(result.useShell).toBe(false);
+  });
+
+  it("ignores AMP_CLI_PATH override when the file does not exist", () => {
+    process.env.AMP_CLI_PATH = join(tmp, "does-not-exist");
+    const result = resolveAmpCommand(["--version"]);
+    // Falls through to default platform behavior — should NOT be the override path.
+    expect(result.command).not.toBe(process.env.AMP_CLI_PATH);
+  });
+
+  it("on non-Windows, defaults to spawning 'amp' directly without a shell", () => {
+    if (process.platform === "win32") return; // skip on Windows
+    delete process.env.AMP_CLI_PATH;
+    const result = resolveAmpCommand(["--version"]);
+    expect(result.command).toBe("amp");
+    expect(result.args).toEqual(["--version"]);
+    expect(result.useShell).toBe(false);
+  });
+
+  it("trims whitespace from AMP_CLI_PATH override", () => {
+    const binEntry = join(tmp, process.platform === "win32" ? "amp.exe" : "amp");
+    writeFileSync(binEntry, "");
+    process.env.AMP_CLI_PATH = `   ${binEntry}   `;
+
+    const result = resolveAmpCommand([]);
+    expect(result.command).toBe(binEntry);
   });
 });

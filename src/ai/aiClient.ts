@@ -2,7 +2,8 @@ import OpenAI from "openai";
 import { execSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import type { AIConfig } from "../types/config.js";
 import type { AIProvider, AIReviewComment } from "../types/review.js";
 import { withRetry, fetchWithTimeout, RetryableError, parseApiError } from "../utils/retry.js";
@@ -233,6 +234,103 @@ export function isAmpCliAvailable(): boolean {
   }
 }
 
+/**
+ * Resolves how to invoke the Amp CLI on the current platform.
+ *
+ * On Windows, `spawn("amp")` fails with EINVAL when the only thing on PATH is
+ * the `.cmd` shim that npm/pnpm create for the `@sourcegraph/amp` package
+ * (because Node's spawn() without `shell: true` cannot execute batch files).
+ *
+ * To avoid that, on Windows we look up the JS entrypoint declared in
+ * `@sourcegraph/amp`'s package.json `bin` field and invoke it via
+ * `node <entrypoint>`. If we can't find the package, we fall back to
+ * `spawn("amp", ..., { shell: true })`, which gives the platform shell a
+ * chance to resolve the `.cmd` shim.
+ *
+ * Honored env-var override: AMP_CLI_PATH — absolute path to either:
+ *   - a JS entrypoint (will be spawned via `node <path>`), or
+ *   - a native binary like `amp.exe` (will be spawned directly).
+ *
+ * On non-Windows we just spawn `amp` as today (the npm bin shim is a real
+ * shell script with a shebang, so no shell wrapping is needed).
+ */
+export function resolveAmpCommand(args: string[]): { command: string; args: string[]; useShell: boolean } {
+  const isWin = process.platform === "win32";
+
+  // 1. Explicit override via env var. Useful for CI environments that pre-install
+  //    Amp at a known path and want to avoid relying on PATH resolution.
+  const overridePath = process.env.AMP_CLI_PATH?.trim();
+  if (overridePath && existsSync(overridePath)) {
+    if (overridePath.toLowerCase().endsWith(".js")) {
+      return { command: process.execPath, args: [overridePath, ...args], useShell: false };
+    }
+    return { command: overridePath, args, useShell: false };
+  }
+
+  // 2. On non-Windows, plain `spawn("amp", ...)` works fine.
+  if (!isWin) {
+    return { command: "amp", args, useShell: false };
+  }
+
+  // 3. On Windows, try to find the @sourcegraph/amp package's JS entrypoint.
+  const jsEntry = findAmpJsEntrypoint();
+  if (jsEntry) {
+    return { command: process.execPath, args: [jsEntry, ...args], useShell: false };
+  }
+
+  // 4. Last-resort fallback: let the shell resolve `amp.cmd` / `amp.bat`.
+  return { command: "amp", args, useShell: true };
+}
+
+/**
+ * Locate the JS entrypoint of the @sourcegraph/amp npm package by reading
+ * its package.json `bin` field. Returns null if the package isn't installed
+ * anywhere we can find it.
+ */
+function findAmpJsEntrypoint(): string | null {
+  const candidatePackageJsonPaths: string[] = [];
+
+  // Try Node's resolver from this module — works when ira-review is npm-installed
+  // alongside @sourcegraph/amp (e.g. `npm install ira-review @sourcegraph/amp`).
+  try {
+    const require_ = createRequire(import.meta.url);
+    candidatePackageJsonPaths.push(require_.resolve("@sourcegraph/amp/package.json"));
+  } catch {
+    // Not resolvable from here — keep looking.
+  }
+
+  // Walk up from cwd looking for node_modules/@sourcegraph/amp/package.json.
+  // This handles CI layouts where Amp is installed into a sibling dir
+  // (e.g. <build-root>/.tools/node_modules) rather than next to IRA.
+  let dir = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    candidatePackageJsonPaths.push(join(dir, "node_modules", "@sourcegraph", "amp", "package.json"));
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  for (const pkgJsonPath of candidatePackageJsonPaths) {
+    if (!existsSync(pkgJsonPath)) continue;
+    try {
+      const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8")) as { bin?: string | Record<string, string> };
+      let binRel: string | undefined;
+      if (typeof pkg.bin === "string") {
+        binRel = pkg.bin;
+      } else if (pkg.bin && typeof pkg.bin === "object") {
+        binRel = pkg.bin.amp ?? Object.values(pkg.bin)[0];
+      }
+      if (!binRel) continue;
+      const entry = join(dirname(pkgJsonPath), binRel);
+      if (existsSync(entry)) return entry;
+    } catch {
+      // Malformed package.json — try next candidate.
+    }
+  }
+
+  return null;
+}
+
 export class AmpCliProvider implements AIProvider {
   private readonly mode: string;
 
@@ -288,10 +386,12 @@ export class AmpCliProvider implements AIProvider {
         if (env[v]) env[v] = env[v].replace(/^~/, home);
       }
 
-      const child = spawn("amp", [
-        "--execute", "--stream-json",
-        "--mode", this.mode,
-      ], { stdio: ["pipe", "pipe", "pipe"], env });
+      const resolved = resolveAmpCommand(["--execute", "--stream-json", "--mode", this.mode]);
+      const child = spawn(resolved.command, resolved.args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        env,
+        shell: resolved.useShell,
+      });
 
       child.stdin.write(prompt);
       child.stdin.end();
